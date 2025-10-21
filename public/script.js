@@ -8,10 +8,10 @@ const productos = [
     { id: 4, nombre: "Monitor Curvo 27''", precio: 299.99, descripcion: "Imágenes vibrantes y fluidas." },
 ];
 
-let carrito = []; // Array que almacenará los productos en el carrito
+let carrito = []; 
 
 // Referencias a elementos del DOM
-const listaProductosDiv = document.getElementById('lista-productos');
+const listaProductosDiv = document.getElementById('lista-productos'); 
 const listaCarritoUl = document.getElementById('lista-carrito');
 const totalCarritoSpan = document.getElementById('total-carrito');
 const btnApartar = document.getElementById('btn-apartar-compra');
@@ -21,15 +21,19 @@ const emailClienteInput = document.getElementById('email-cliente');
 const fechaRecoleccionInput = document.getElementById('fecha-recoleccion');
 const horaRecoleccionInput = document.getElementById('hora-recoleccion');
 
-// 2. Función para renderizar (mostrar) los productos
+// 2. Función para renderizar (mostrar) los productos en CARDS
 function renderizarProductos() {
-    listaProductosDiv.innerHTML = '';
+    if (!listaProductosDiv) return;
+
+    listaProductosDiv.innerHTML = ''; 
+
     productos.forEach(producto => {
         const card = document.createElement('div');
-        card.className = 'producto-card';
+        card.className = 'producto-card'; 
         card.innerHTML = `
             <h3>${producto.nombre}</h3>
-            <p>$${producto.precio.toFixed(2)}</p>
+            <p>${producto.descripcion}</p>
+            <p><strong>$${producto.precio.toFixed(2)}</strong></p>
             <button onclick="agregarAlCarrito(${producto.id})">Añadir al Carrito</button>
         `;
         listaProductosDiv.appendChild(card);
@@ -77,7 +81,7 @@ function renderizarCarrito() {
     totalCarritoSpan.textContent = total.toFixed(2);
 }
 
-// 5. Función para enviar el pedido al servidor (Recolección y Correo)
+// 5. Función para enviar el pedido al servidor
 async function apartarCompra() {
     if (carrito.length === 0) {
         alert('❌ El carrito está vacío. Añade productos para confirmar el apartado.');
@@ -90,10 +94,14 @@ async function apartarCompra() {
     const hora = horaRecoleccionInput.value;
     const total = totalCarritoSpan.textContent;
 
-    if (!nombre || !email || !fecha || !hora) {
-        alert('⚠️ Por favor, completa todos los campos para confirmar tu apartado.');
+    // VALIDACIÓN FLEXIBLE
+    if (!nombre || !email) { 
+        alert('⚠️ Por favor, ingresa tu Nombre y Correo Electrónico. Los campos de Día y Hora son opcionales para esta prueba.');
         return;
     }
+    
+    const fechaFinal = fecha || 'No especificada'; 
+    const horaFinal = hora || 'No especificada';
 
     const datosPedido = {
         carrito: carrito.map(item => ({
@@ -105,8 +113,8 @@ async function apartarCompra() {
         cliente: {
             nombre: nombre,
             email: email,
-            fecha: fecha,
-            hora: hora
+            fecha: fechaFinal,
+            hora: horaFinal
         },
         total: total
     };
@@ -114,18 +122,15 @@ async function apartarCompra() {
     try {
         const response = await fetch('/apartar-compra', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(datosPedido)
         });
-
         const result = await response.json();
 
         if (result.success) {
-            alert(`🎉 ¡Apartado Confirmado, ${nombre}! 🎉\n\nTu total es de $${total}.\n\n✅ Hemos enviado un CORREO DE CONFIRMACIÓN a ${email} con los detalles de recolección.`);
-
-            // Limpiar el estado
+            // Se usa result.orderId del servidor
+            alert(`🎉 ¡Apartado Confirmado, ${nombre}! \n\nTu ID de Orden es: #${result.orderId}\n\n✅ Hemos enviado un CORREO DE CONFIRMACIÓN.`);
+            
             carrito = [];
             renderizarCarrito();
             nombreClienteInput.value = '';
@@ -151,7 +156,7 @@ function enviarPedidoWhatsapp() {
     }
     
     const total = totalCarritoSpan.textContent;
-    const numeroWhatsApp = '5211234567890'; // ⚠️ Reemplaza con tu número (código de país + número, sin '+' ni espacios)
+    const numeroWhatsApp = '5211234567890'; 
 
     let mensaje = "¡Hola! Me gustaría hacer el siguiente pedido:\n\n";
     
@@ -166,12 +171,12 @@ function enviarPedidoWhatsapp() {
     const urlWhatsApp = `https://wa.me/${numeroWhatsApp}?text=${mensajeCodificado}`;
 
     window.open(urlWhatsApp, '_blank');
-    alert('🌐 Abriendo WhatsApp con los detalles de tu pedido.');
+    alert('🌐 Abriendo WhatsApp con los detalles de tu pedido. ¡No olvides enviar el mensaje!');
 }
 
 // 7. Inicializar y Asignar Eventos
 document.addEventListener('DOMContentLoaded', () => {
-    renderizarProductos();
+    renderizarProductos(); 
     renderizarCarrito(); 
 });
 

@@ -1,0 +1,43 @@
+[
+  {
+    "orderId": "ORD-20251021-64F65C",
+    "fechaCreacion": "10/21/2025, 3:08:39 PM",
+    "cliente": {
+      "nombre": "victor",
+      "email": "daniel_94bep@hotmail.com",
+      "fecha": "2025-10-23",
+      "hora": "No especificada"
+    },
+    "carrito": [
+      {
+        "id": 2,
+        "nombre": "Teclado Mecánico RGB",
+        "precio": 95.5,
+        "cantidad": 1
+      }
+    ],
+    "total": "95.50",
+    "status": "PENDIENTE DE PAGO"
+  },
+  {
+    "orderId": "ORD-20251021-2783FA",
+    "fechaCreacion": "10/21/2025, 3:11:33 PM",
+    "cliente": {
+      "nombre": "victor",
+      "email": "daniel_94bep@hotmail.com",
+      "fecha": "2025-10-22",
+      "hora": "No especificada"
+    },
+    "carrito": [
+      {
+        "id": 2,
+        "nombre": "Teclado Mecánico RGB",
+        "precio": 95.5,
+        "cantidad": 1
+      }
+    ],
+    "total": "95.50",
+    "status": "LISTO PARA RECOGER",
+    "fechaActualizacion": "10/21/2025, 3:18:38 PM"
+  }
+]
