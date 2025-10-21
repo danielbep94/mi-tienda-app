@@ -1,3 +1,7 @@
+
+
+
+
 // server.js
 
 const express = require('express');
@@ -11,16 +15,17 @@ const PORT = 3000;
 // Configuración del Servidor y Middleware
 // -------------------------------------------------------------
 
-// Servir archivos estáticos (Frontend) desde la carpeta 'public'
+// 1. Servir archivos estáticos (Frontend) desde la carpeta 'public'
+//    Esto permite que el navegador encuentre index.html, styles.css, y script.js
 app.use(express.static(path.join(__dirname, 'public')));
-// Para que Express pueda leer los datos enviados en formato JSON
+// 2. Para que Express pueda leer los datos enviados en formato JSON
 app.use(express.json());
 
 // -------------------------------------------------------------
 // Configuracion del Correo (Nodemailer)
 // -------------------------------------------------------------
 
-// ⚠️ ATENCIÓN: Reemplaza con tus credenciales reales.
+// ⚠️ ATENCIÓN: Reemplaza con tus credenciales reales (Correo de la empresa y Contraseña de Aplicación).
 const transporter = nodemailer.createTransport({
     service: 'gmail', // Usar 'gmail' o el que corresponda
     auth: {

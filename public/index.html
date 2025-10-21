@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tienda de Productos - Mi Empresa</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <header>
+        <h1>🛒 Mis Productos</h1>
+    </header>
+
+    <main>
+        <section id="productos">
+            <h2>Nuestros Productos</h2>
+            <div id="lista-productos" class="productos-grid">
+                </div>
+        </section>
+
+        <aside id="carrito">
+            <h2>Cesta de Compra</h2>
+            <ul id="lista-carrito">
+                </ul>
+            <p class="total-line">Total: $<span id="total-carrito">0.00</span></p>
+
+            <div id="formulario-apartado">
+                <h3>Detalles de Recolección</h3>
+
+                <label for="nombre-cliente">Nombre Completo:</label>
+                <input type="text" id="nombre-cliente" required>
+
+                <label for="email-cliente">Correo Electrónico:</label>
+                <input type="email" id="email-cliente" required>
+                
+                <label for="fecha-recoleccion">Día de Recolección:</label>
+                <input type="date" id="fecha-recoleccion" required>
+
+                <label for="hora-recoleccion">Hora de Recolección:</label>
+                <input type="time" id="hora-recoleccion" required>
+                
+                <button id="btn-apartar-compra">Confirmar Apartado y Recolección</button>
+                <button id="btn-whatsapp-pedido" class="whatsapp-btn">Enviar Pedido por WhatsApp</button>
+            </div>
+        </aside>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
