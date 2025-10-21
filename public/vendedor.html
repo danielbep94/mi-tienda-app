@@ -10,16 +10,21 @@
         body { background-color: #e9ecef; }
         .container { max-width: 95%; width: 1000px; margin: 50px auto; padding: 30px; background-color: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
         h1 { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 20px; text-align: center; }
+        h2 { margin-top: 30px; color: #333; }
         label { display: block; margin-top: 15px; font-weight: bold; }
         input, select, button { padding: 10px; margin-top: 5px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
+        /* Botones de acción */
         #btn-actualizar-status { background-color: #007bff; color: white; margin-top: 20px; cursor: pointer; transition: background-color 0.3s; width: 100%; }
         #btn-actualizar-status:hover { background-color: #0056b3; }
-        #status-mensaje { padding: 10px; margin-top: 20px; border-radius: 4px; display: none; }
+        #btn-buscar-orden { background-color: #f0ad4e; color: white; border: none; cursor: pointer; }
         .flex-group { display: flex; gap: 10px; width: 100%; }
+        /* Mensajes */
+        #status-mensaje, #catalogo-mensaje { padding: 10px; margin-top: 20px; border-radius: 4px; display: none; }
+        /* Tabla */
         #tabla-ordenes { width: 100%; border-collapse: collapse; margin-top: 15px; }
-        #tabla-ordenes th, #tabla-ordenes td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        #tabla-ordenes th, #tabla-ordenes td { border: 1px solid #ddd; padding: 12px; text-align: left; font-size: 0.9em; }
         #tabla-ordenes thead th { background-color: #f2f2f2; color: #333; font-weight: bold; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; color: white; }
     </style>
 </head>
 <body>
@@ -27,13 +32,13 @@
     <div class="container">
         <h1>⚙️ Panel de Gestión de Órdenes</h1>
         
-        <h2>1. Búsqueda y Actualización</h2>
-        <p>Utiliza esta sección para cambiar el estatus de una orden específica.</p>
+        <h2>1. Búsqueda y Actualización de Estatus</h2>
+        <p>Busca una orden por su ID para ver detalles y cambiar su estado.</p>
 
         <label for="input-order-id">ID de Orden:</label>
         <div class="flex-group">
             <input type="text" id="input-order-id" placeholder="Ej: ORD-20251021-ABC12" style="flex-grow: 1;">
-            <button id="btn-buscar-orden" style="width: 120px; background-color: #f0ad4e; color: white; border: none; cursor: pointer;">Buscar Orden</button>
+            <button id="btn-buscar-orden" style="width: 120px;">Buscar Orden</button>
         </div>
         
         <div id="detalle-orden-buscada" style="margin-top: 15px; padding: 15px; border: 1px dashed #007bff; background-color: #f0f8ff; display: none;">
@@ -69,6 +74,21 @@
             <tbody id="ordenes-tbody">
                 </tbody>
         </table>
+
+        <hr style="margin: 40px 0; border: 0; border-top: 1px solid #ccc;">
+
+        <h2>3. Carga Masiva de Catálogo (Excel/XLSX)</h2>
+        <p>Sube un archivo Excel/CSV. La primera hoja debe tener las columnas en este orden exacto: <b>id, nombre, descripcion, precio, stock</b>.</p>
+        
+        <form id="form-catalogo-upload" enctype="multipart/form-data">
+            <label for="file-upload">Seleccionar Archivo Excel:</label>
+            <input type="file" id="file-upload" name="archivoCatalogo" accept=".xls,.xlsx,.csv" required> 
+            
+            <button type="submit" style="width: 100%; margin-top: 15px; background-color: #28a745; color: white;">
+                Subir y Actualizar Catálogo
+            </button>
+            <p id="catalogo-mensaje" style="margin-top: 10px; font-weight: bold;"></p>
+        </form>
     </div>
 
     <script src="vendedor.js"></script> 

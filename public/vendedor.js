@@ -7,6 +7,8 @@ const btnActualizarStatus = document.getElementById('btn-actualizar-status');
 const btnBuscarOrden = document.getElementById('btn-buscar-orden'); 
 const statusMensajeDiv = document.getElementById('status-mensaje');
 const detalleOrdenBuscadaDiv = document.getElementById('detalle-orden-buscada');
+const formCatalogoUpload = document.getElementById('form-catalogo-upload'); // Nuevo
+const catalogoMensaje = document.getElementById('catalogo-mensaje');       // Nuevo
 
 // Referencias de la Sección de Listado
 const ordenesTbody = document.getElementById('ordenes-tbody'); 
@@ -17,6 +19,10 @@ const detalleCliente = document.getElementById('detalle-cliente');
 const detalleStatus = document.getElementById('detalle-status');
 
 let currentOrderId = null; 
+
+// -------------------------------------------------------------
+// Funciones Auxiliares
+// -------------------------------------------------------------
 
 function obtenerColorStatus(status) {
     switch (status) {
@@ -29,26 +35,26 @@ function obtenerColorStatus(status) {
     }
 }
 
-function mostrarMensaje(mensaje, tipo) {
-    statusMensajeDiv.textContent = mensaje;
-    statusMensajeDiv.style.display = 'block';
-    statusMensajeDiv.style.padding = '10px';
-    statusMensajeDiv.style.border = '1px solid';
+function mostrarMensaje(mensaje, tipo, targetDiv = statusMensajeDiv) {
+    targetDiv.textContent = mensaje;
+    targetDiv.style.display = 'block';
+    targetDiv.style.border = '1px solid';
+    targetDiv.style.color = 'white'; 
     
     if (tipo === 'success') {
-        statusMensajeDiv.style.backgroundColor = '#d4edda';
-        statusMensajeDiv.style.color = '#155724';
+        targetDiv.style.backgroundColor = '#28a745'; // Usamos un verde oscuro para que se lea mejor sobre fondo blanco
+        targetDiv.style.color = 'white';
     } else if (tipo === 'error') {
-        statusMensajeDiv.style.backgroundColor = '#f8d7da';
-        statusMensajeDiv.style.color = '#721c24';
+        targetDiv.style.backgroundColor = '#dc3545'; // Rojo
+        targetDiv.style.color = 'white';
     } else {
-        statusMensajeDiv.style.backgroundColor = '#fff3cd';
-        statusMensajeDiv.style.color = '#856404';
+        targetDiv.style.backgroundColor = '#f0ad4e'; // Naranja (info/warning)
+        targetDiv.style.color = 'white';
     }
 }
 
 // -------------------------------------------------------------
-// Lógica de Listado
+// 1. Lógica de Historial (Listado)
 // -------------------------------------------------------------
 
 async function listarOrdenes() {
@@ -58,7 +64,6 @@ async function listarOrdenes() {
 
         if (result.success) {
             ordenesTbody.innerHTML = ''; 
-            // Invertimos el orden para mostrar las más recientes primero
             const ordenesRecientes = result.ordenes.reverse(); 
 
             ordenesRecientes.forEach(orden => {
@@ -68,7 +73,7 @@ async function listarOrdenes() {
                     <td>${orden.cliente.nombre}</td>
                     <td>$${orden.total}</td>
                     <td>
-                        <span class="status-badge" style="background-color: ${obtenerColorStatus(orden.status)}; color: white;">
+                        <span class="status-badge" style="background-color: ${obtenerColorStatus(orden.status)};">
                             ${orden.status}
                         </span>
                     </td>
@@ -85,7 +90,7 @@ async function listarOrdenes() {
 }
 
 // -------------------------------------------------------------
-// Lógica de Búsqueda
+// 2. Lógica de Búsqueda y Actualización
 // -------------------------------------------------------------
 
 async function buscarOrden() {
@@ -107,11 +112,10 @@ async function buscarOrden() {
             detalleCliente.textContent = `${orden.cliente.nombre} (${orden.cliente.email})`;
             detalleStatus.textContent = orden.status;
             detalleStatus.style.backgroundColor = obtenerColorStatus(orden.status);
-            detalleStatus.style.color = 'white'; 
             
             detalleOrdenBuscadaDiv.style.display = 'block';
             currentOrderId = orden.orderId; 
-            mostrarMensaje(`Orden ${orden.orderId} cargada. Ahora puede actualizar el estatus.`, 'info');
+            mostrarMensaje(`Orden ${orden.orderId} cargada. Ahora puede actualizar el estatus.`, 'success');
         } else {
             mostrarMensaje(`Orden con ID ${orderId} no encontrada.`, 'error');
             detalleOrdenBuscadaDiv.style.display = 'none';
@@ -121,10 +125,6 @@ async function buscarOrden() {
         mostrarMensaje('Error de conexión al buscar la orden.', 'error');
     }
 }
-
-// -------------------------------------------------------------
-// Lógica de Actualización de Estatus
-// -------------------------------------------------------------
 
 async function actualizarStatusOrden() {
     const orderId = currentOrderId || inputOrderId.value.trim(); 
@@ -157,6 +157,39 @@ async function actualizarStatusOrden() {
         mostrarMensaje('❌ Error de conexión al servidor.', 'error');
     }
 }
+
+// -------------------------------------------------------------
+// 3. Lógica de Carga de Catálogo (Excel)
+// -------------------------------------------------------------
+
+formCatalogoUpload.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    mostrarMensaje('Subiendo y procesando el archivo Excel...', 'info', catalogoMensaje);
+
+    const formData = new FormData(formCatalogoUpload);
+
+    try {
+        const response = await fetch('/api/admin/catalogo', {
+            method: 'POST',
+            body: formData, 
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            mostrarMensaje(`✅ ${result.message} ¡Inventario actualizado!`, 'success', catalogoMensaje);
+            // Recargar la lista de órdenes, aunque el cambio está en el catálogo, es buena práctica.
+            listarOrdenes(); 
+        } else {
+            mostrarMensaje(`❌ Error en la carga: ${result.message}`, 'error', catalogoMensaje);
+        }
+    } catch (error) {
+        mostrarMensaje('❌ Error de red al subir el archivo.', 'error', catalogoMensaje);
+        console.error('Error de subida:', error);
+    }
+});
+
 
 // -------------------------------------------------------------
 // Inicialización

@@ -17,6 +17,8 @@
     "dotenv": "^17.2.3",
     "express": "^4.18.2",
     "mongoose": "^8.19.2",
-    "nodemailer": "^6.9.13"
+    "multer": "^2.0.2",
+    "nodemailer": "^6.9.13",
+    "xlsx": "^0.18.5"
   }
 }
