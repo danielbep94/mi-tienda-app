@@ -23,18 +23,13 @@ const fechaRecoleccionInput = document.getElementById('fecha-recoleccion');
 const horaRecoleccionInput = document.getElementById('hora-recoleccion');
 const formOrden = document.getElementById('form-orden');
 
-const btnIniciarPago = document.getElementById('btn-iniciar-pago');
-const paymentContainer = document.getElementById('payment-element-container');
-
 // Helpers extra
 const STORAGE_KEY = 'CARRITO_STORE_V1';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const btnIniciarPago = document.getElementById('btn-iniciar-pago');
+const paymentContainer = document.getElementById('payment-element-container');
 
-
-// ─────────────────────────────────────────────────────────────
-// Utilidades y Persistencia
-// ─────────────────────────────────────────────────────────────
-
+// Persistencia ligera
 function guardarCarrito() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CARRITO)); } catch (_) {}
 }
@@ -45,13 +40,6 @@ function cargarCarrito() {
   } catch (_) {
     CARRITO = [];
   }
-}
-
-function setMinDateToday() {
-  if (!fechaRecoleccionInput) return;
-  const tzOffsetMs = new Date().getTimezoneOffset() * 60 * 1000;
-  const todayLocalISO = new Date(Date.now() - tzOffsetMs).toISOString().slice(0, 10);
-  fechaRecoleccionInput.min = todayLocalISO;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -66,11 +54,8 @@ function renderizarCarrito() {
     cont.innerHTML = '<li>El carrito está vacío.</li>';
     totalEl.textContent = '0.00';
     guardarCarrito();
-
-    if (paymentContainer) {
-      paymentContainer.innerHTML = '';
-      paymentContainer.style.display = 'none';
-    }
+    // Oculta UI de pago si estaba visible
+    if (paymentContainer) paymentContainer.style.display = 'none';
     if (btnIniciarPago) btnIniciarPago.style.display = '';
     return;
   }
@@ -97,6 +82,7 @@ function renderizarCarrito() {
 
   totalEl.textContent = fmt(total);
 
+  // Eventos: cambio de cantidad
   $$('.carrito-cantidad').forEach((inp) => {
     inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.idx);
@@ -107,6 +93,7 @@ function renderizarCarrito() {
     });
   });
 
+  // Eventos: eliminar
   $$('.btn-eliminar').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.idx);
@@ -118,7 +105,7 @@ function renderizarCarrito() {
 }
 
 function agregarAlCarrito(prod) {
-  const existente = CARRITO.find((p) => p.id === prod.id);
+  const existente = CARRITO.find((p) => String(p.id) === String(prod.id));
   if (existente) {
     existente.cantidad += 1;
   } else {
@@ -129,15 +116,16 @@ function agregarAlCarrito(prod) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Render de productos (Lectura de MongoDB)
+// Render de productos (Lectura de MongoDB) con fallback
 // ─────────────────────────────────────────────────────────────
 async function fetchProductosConFallback() {
+  // Primero intenta ruta relativa; si falla, intenta localhost
   try {
     const r1 = await fetch('/api/products', { credentials: 'same-origin' });
     if (r1.ok) return r1.json();
     throw new Error(`HTTP ${r1.status}`);
   } catch (_) {
-    const r2 = await fetch('http://localhost:3000/api/products'); 
+    const r2 = await fetch('http://localhost:3000/api/products');
     if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
     return r2.json();
   }
@@ -150,10 +138,21 @@ async function renderizarProductos() {
 
   try {
     const productos = await fetchProductosConFallback();
-    inventarioLocal = Array.isArray(productos) ? productos : [];
+    // Normaliza: preferimos id numérico si existe; si no, usamos _id string.
+    inventarioLocal = Array.isArray(productos)
+      ? productos.map(p => ({
+          id: (p.id != null ? Number(p.id) : (p._id || String(p._id))),
+          nombre: p.nombre,
+          descripcion: p.descripcion,
+          precio: Number(p.precio),
+          stock: Number(p.stock || 0),
+          _raw: p,
+        }))
+      : [];
 
     if (!inventarioLocal.length) {
-      cont.innerHTML = `<div class="productos-grid" style="grid-template-columns: 1fr;">
+      cont.innerHTML = `
+        <div class="productos-grid" style="grid-template-columns: 1fr;">
           <p style="color: #f0ad4e; font-weight: bold;">No hay productos disponibles.</p>
         </div>`;
       return;
@@ -162,7 +161,9 @@ async function renderizarProductos() {
     cont.innerHTML = '';
     const grid = document.createElement('div');
     grid.className = 'productos-grid';
-    grid.style.cssText = 'display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:16px;';
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(220px, 1fr))';
+    grid.style.gap = '16px';
 
     inventarioLocal.forEach((p) => {
       const card = document.createElement('div');
@@ -171,7 +172,7 @@ async function renderizarProductos() {
       card.innerHTML = `
         <h3 style="margin:0 0 6px 0;">${p.nombre}</h3>
         <p style="margin:0 0 8px 0; color:#4b5563;">${p.descripcion || ''}</p>
-        <p><strong>$${fmt(p.precio)}</strong></p>
+        <p style="margin:0 0 12px 0;"><strong>$${fmt(p.precio)}</strong></p>
         <button class="btn-agregar" data-id="${p.id}" style="width:100%;">Añadir al Carrito</button>
       `;
       grid.appendChild(card);
@@ -181,9 +182,17 @@ async function renderizarProductos() {
 
     $$('.btn-agregar').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const id = Number(btn.dataset.id);
-        const prod = inventarioLocal.find((x) => x.id === id);
-        if (prod) agregarAlCarrito(prod);
+        const raw = btn.dataset.id;
+        // si es número válido, úsalo; si no, deja string (ObjectId)
+        const id = Number.isFinite(Number(raw)) && String(Number(raw)) === String(raw) ? Number(raw) : String(raw);
+        const prod = inventarioLocal.find((x) => String(x.id) === String(id));
+        if (prod) {
+          agregarAlCarrito({
+            id, // puede ser Number o string (ObjectId)
+            nombre: prod.nombre,
+            precio: Number(prod.precio)
+          });
+        }
       });
     });
   } catch (err) {
@@ -194,129 +203,127 @@ async function renderizarProductos() {
   }
 }
 
-
 // ─────────────────────────────────────────────────────────────
-// FLUJO DE PAGO Y ORDEN (CORREGIDO)
+// FLUJO DE PAGO Y ORDEN (CORREGIDO + MEJORAS)
 // ─────────────────────────────────────────────────────────────
 async function iniciarFlujoDePago(e) {
-  // Manejamos el evento submit/click para iniciar el flujo de pago con tarjeta
-  if (e && typeof e.preventDefault === 'function') e.preventDefault();
+  e.preventDefault(); 
 
   if (CARRITO.length === 0) return alert('Tu carrito está vacío.');
-
+  
   // 1. Obtener y validar datos del cliente
-  const nombre = (nombreClienteInput?.value || '').trim();
-  const email = (emailClienteInput?.value || '').trim();
-  const fecha = (fechaRecoleccionInput?.value || '').trim();
-  const hora = (horaRecoleccionInput?.value || '').trim();
-
+  const nombre = nombreClienteInput.value.trim();
+  const email  = emailClienteInput.value.trim();
+  const fecha  = fechaRecoleccionInput.value;
+  const hora   = horaRecoleccionInput.value;
+  
   if (!nombre || !email || !fecha || !hora) {
-    return alert('Completa todos los campos de detalles de recolección.');
+      return alert('Completa todos los campos de detalles de recolección.');
   }
   if (!EMAIL_RE.test(email)) {
-    return alert('Ingresa un correo electrónico válido.');
+      return alert('Ingresa un correo electrónico válido.');
   }
-
+  
   const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
 
   try {
-    // 1. Ocultar botón inicial, mostrar contenedor de Stripe
-    if (paymentContainer) paymentContainer.innerHTML = '';
-    if (btnIniciarPago) btnIniciarPago.style.display = 'none';
-    if (paymentContainer) paymentContainer.style.display = 'block';
+      // Evita crear múltiples botones/elementos si el usuario re-clickea
+      if (paymentContainer) {
+        paymentContainer.innerHTML = '';
+        paymentContainer.style.display = 'block';
+      }
+      if (btnIniciarPago) btnIniciarPago.style.display = 'none';
 
-    const response = await fetch('/api/create-payment-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        carrito: CARRITO.map(({ id, nombre, precio, cantidad }) => ({ id, nombre, precio, cantidad })),
-        cliente: { nombre, email, fecha, hora },
-        total: total.toFixed(2),
-      }),
-    });
+      // 2. Llamar al backend para crear el Payment Intent y guardar orden PENDIENTE
+      const response = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+              carrito: CARRITO.map(({ id, nombre, precio, cantidad }) => ({ id, nombre, precio, cantidad })),
+              cliente: { nombre, email, fecha, hora },
+              total: total.toFixed(2)
+          }),
+      });
 
-    const json = await response.json();
-    if (!response.ok || !json.success) throw new Error(json.message || 'No se pudo iniciar el pago.');
+      const json = await response.json();
+      if (!json.success) throw new Error(json.message || 'No se pudo iniciar el pago.');
+      
+      // 3. Montar el formulario de Stripe con el clientSecret
+      const appearance = { theme: 'stripe' };
+      elements = stripe.elements({ appearance, clientSecret: json.clientSecret });
 
-    // 2. Montar Stripe Elements
-    const appearance = { theme: 'stripe' };
-    elements = stripe.elements({ appearance, clientSecret: json.clientSecret });
+      const paymentElement = elements.create("payment", { layout: 'tabs' });
+      paymentElement.mount(paymentContainer);
+      
+      // 4. Inyectar el botón de pago y configurar el Listener
+      const btnPagar = document.createElement('button');
+      btnPagar.id = 'btn-pagar';
+      btnPagar.textContent = `Pagar $${total.toFixed(2)}`;
+      btnPagar.style.cssText = 'width: 100%; padding: 10px; margin-top: 15px; background-color: #6772e5; color: white; border: none; border-radius: 6px; cursor: pointer;';
+      
+      paymentContainer.appendChild(btnPagar);
 
-    const paymentElement = elements.create('payment', { layout: 'tabs' });
-    paymentElement.mount('#payment-element-container');
-
-    // 3. Botón pagar (adjunto al contenedor)
-    const btnPagar = document.createElement('button');
-    btnPagar.id = 'btn-pagar';
-    btnPagar.type = 'button'; // Asegura que no dispare submit
-    btnPagar.textContent = `Pagar $${total.toFixed(2)}`;
-    btnPagar.style.cssText =
-      'width:100%; padding:10px; margin-top:15px; background-color:#6772e5; color:#fff; border:none; border-radius:6px; cursor:pointer;';
-    paymentContainer.appendChild(btnPagar);
-
-    // 4. Asignar la función final al nuevo botón
-    btnPagar.addEventListener('click', procesarPagoFinal);
+      // 5. Asignar la función final al nuevo botón
+      btnPagar.addEventListener('click', procesarPagoFinal);
 
   } catch (err) {
-    console.error('Error al iniciar el pago:', err);
-    alert(`Error al iniciar el pago: ${err.message}. Revisa tu conexión o intenta de nuevo.`);
-
-    // Fallback: mostrar el botón inicial de nuevo
-    if (paymentContainer) paymentContainer.style.display = 'none';
-    if (btnIniciarPago) btnIniciarPago.style.display = 'block';
+      console.error('Error al iniciar el pago:', err);
+      alert(`Error al iniciar el pago: ${err.message}. Revisa tu conexión o intenta de nuevo.`);
+      if (paymentContainer) paymentContainer.style.display = 'none';
+      if (btnIniciarPago) btnIniciarPago.style.display = '';
   }
 }
 
 async function procesarPagoFinal() {
   try {
-    const btnPagar = document.getElementById('btn-pagar');
-    if (btnPagar) {
-      btnPagar.disabled = true;
-      btnPagar.textContent = 'Procesando…';
-    }
-
-    // 1. Confirmar el pago con la URL de redirección
-    const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
-
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        // La URL de redirección final es CRÍTICA para que Stripe termine el flujo.
-        return_url: `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`,
-      },
-      redirect: 'if_required', 
-    });
-
-    // 2. Manejo de errores de confirmación de Stripe
-    if (error) {
-      alert(error.message || 'No se pudo confirmar el pago. Verifica tus datos.');
+      const btnPagar = document.getElementById('btn-pagar');
       if (btnPagar) {
-        btnPagar.disabled = false;
-        btnPagar.textContent = 'Pagar de nuevo';
+          btnPagar.disabled = true;
+          btnPagar.textContent = 'Procesando…';
       }
-      return;
-    }
-    
-    // 3. Si el pago es exitoso pero NO redirigió (raro), notificamos manualmente.
-    if (paymentIntent && paymentIntent.status === 'succeeded') {
-        alert('✅ Pago Exitoso. Redirigiendo para confirmación final.');
-        window.location.href = `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`;
-    }
-    // Si no hubo error ni éxito inmediato, Stripe maneja la redirección.
+
+      // 1. Confirmar el pago con la URL de redirección
+      const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
+
+      const { error, paymentIntent } = await stripe.confirmPayment({
+          elements,
+          confirmParams: {
+              // Esta URL es crítica para forzar la finalización del flujo de Stripe.
+              return_url: `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`,
+          },
+          redirect: 'if_required', 
+      });
+
+      // 2. Manejo de errores de confirmación de Stripe
+      if (error) {
+          alert(error.message || 'No se pudo confirmar el pago. Verifica tus datos.');
+          if (btnPagar) {
+              btnPagar.disabled = false;
+              btnPagar.textContent = 'Fallo al Pagar (Reintentar)'; // Mensaje de fallo claro
+          }
+          return;
+      }
+      
+      // 3. (CASO EXCEPCIONAL) Si Stripe NO redirige, pero el pago es exitoso (raro),
+      // notificamos el éxito aquí como fallback.
+      if (paymentIntent && paymentIntent.status === 'succeeded') {
+           alert('✅ Pago Exitoso. Redirigiendo para confirmación final.');
+           window.location.href = `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`;
+      }
 
   } catch (err) {
-    console.error('Error en confirmación de pago:', err);
-    alert('Ocurrió un error al confirmar el pago.');
+      console.error('Error en confirmación de pago:', err);
+      alert('Ocurrió un error al confirmar el pago.');
   }
 }
 
-// Función para enviar el pedido a WhatsApp Business (Mantenido)
+// WhatsApp: usa el número incrustado en data-phone del botón o un fallback
 function enviarPedidoWhatsapp() {
   if (CARRITO.length === 0) return alert('Tu carrito está vacío.');
 
-  const nombre = (nombreClienteInput?.value || '').trim();
-  const fecha = (fechaRecoleccionInput?.value || '').trim();
-  const hora = (horaRecoleccionInput?.value || '').trim();
+  const nombre = (nombreClienteInput.value || '').trim();
+  const fecha = (fechaRecoleccionInput.value || '').trim();
+  const hora = (horaRecoleccionInput.value || '').trim();
 
   const resumen = CARRITO.map((i) => `• ${i.nombre} x${i.cantidad} — $${fmt(i.precio * i.cantidad)}`).join('\n');
   const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
@@ -328,19 +335,15 @@ function enviarPedidoWhatsapp() {
     `Nombre: ${nombre || 'N/D'}\n` +
     `Recolección: ${fecha || 'N/D'} a las ${hora || 'N/D'}`;
 
-  const phone = btnWhatsapp?.dataset?.phone || '0000000000'; 
+  const phone = btnWhatsapp?.dataset?.phone || '0000000000'; // <-- coloca aquí tu número si prefieres
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
-
 
 // ─────────────────────────────────────────────────────────────
 // Inicio y Listeners
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  // Configurar fecha mínima
-  setMinDateToday();
-
   // Carga carrito persistido (si lo hay)
   cargarCarrito();
 
@@ -349,27 +352,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderizarCarrito();
 
   // Listeners
-  if (formOrden) {
-    // Escuchar el submit del formulario para iniciar el flujo de pago.
-    formOrden.addEventListener('submit', (e) => {
-      e.preventDefault();
-      iniciarFlujoDePago(e);
-    });
-  }
-
-  // Listener explícito en el botón de WhatsApp
+  if (formOrden) formOrden.addEventListener('submit', iniciarFlujoDePago);
   if (btnWhatsapp) btnWhatsapp.addEventListener('click', enviarPedidoWhatsapp);
 
   // Manejo de retorno (Stripe return_url)
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('payment_success') === 'true') {
-    const totalPaid = urlParams.get('total_paid');
-    alert(`🎉 ¡Pago completado con éxito!${totalPaid ? ` Importe: $${totalPaid}.` : ''} Recibirás un correo de confirmación de tu pedido.`);
-    // Limpia carrito después de éxito
-    CARRITO = [];
-    guardarCarrito();
-    renderizarCarrito();
-    // Limpia query params
-    history.replaceState(null, '', window.location.pathname);
+      const totalPaid = urlParams.get('total_paid');
+      
+      // El mensaje final que el usuario ve
+      alert(`🎉 ¡Pago COMPLETADO con éxito!${totalPaid ? ` Importe: $${totalPaid}.` : ''} El vendedor procesará la orden y recibirás un correo final.`);
+      
+      // Limpia carrito y UI
+      CARRITO = [];
+      guardarCarrito();
+      renderizarCarrito();
+      
+      // Limpia query params
+      history.replaceState(null, '', window.location.pathname);
   }
 });

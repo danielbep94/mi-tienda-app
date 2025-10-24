@@ -11,6 +11,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const crypto = require('crypto');
 const mongoose = require('mongoose');
+const { Types } = mongoose;
 const multer = require('multer');
 const xlsx = require('xlsx');
 
@@ -29,7 +30,13 @@ const PORT = Number(process.env.PORT || 3000);
 // ─────────────────────────────────────────────────────────────
 // 2) Validación temprana de variables de entorno críticas
 // ─────────────────────────────────────────────────────────────
-const REQUIRED_ENVS = ['MONGO_URI', 'STRIPE_SECRET_KEY', 'EMAIL_USER', 'EMAIL_PASS', 'STRIPE_WEBHOOK_SECRET'];
+const REQUIRED_ENVS = [
+  'MONGO_URI',
+  'STRIPE_SECRET_KEY',
+  'EMAIL_USER',
+  'EMAIL_PASS',
+  'STRIPE_WEBHOOK_SECRET',
+];
 REQUIRED_ENVS.forEach((k) => {
   if (!process.env[k]) {
     console.warn(`⚠️  Falta variable de entorno: ${k}`);
@@ -159,27 +166,66 @@ async function enviarCorreoConfirmacionPago(orden) {
   }
 }
 
-// Validación de carrito contra DB
+/** ───────────────────────────────────────────────────────────
+ *  Helpers de IDs para soportar id Numérico o _id (ObjectId)
+ *  ───────────────────────────────────────────────────────────
+ */
+function buildProductQueryFromCart(carrito) {
+  const idsNum = [];
+  const idsObj = [];
+
+  for (const item of carrito) {
+    const raw = item?.id ?? item?._id ?? item?.productKey;
+    if (raw == null) continue;
+
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum) && String(asNum) === String(raw)) {
+      idsNum.push(asNum);
+    } else if (typeof raw === 'string' && Types.ObjectId.isValid(raw)) {
+      idsObj.push(new Types.ObjectId(raw));
+    }
+  }
+
+  const or = [];
+  if (idsNum.length) or.push({ id: { $in: idsNum } });
+  if (idsObj.length) or.push({ _id: { $in: idsObj } });
+  return or.length ? { $or: or } : null;
+}
+
+function matchesItemToDoc(item, doc) {
+  const raw = item?.id ?? item?._id ?? item?.productKey;
+  if (raw == null) return false;
+  if (doc.id != null && String(doc.id) === String(raw)) return true;
+  return String(doc._id) === String(raw);
+}
+
+// Validación de carrito contra DB (acepta id o _id)
 async function validarYCalcularTotal(carrito) {
   if (!Array.isArray(carrito) || carrito.length === 0) {
     return { ok: false, message: 'Carrito vacío.' };
   }
-  const ids = carrito.map((i) => i.id);
-  const productos = await Product.find({ id: { $in: ids } });
-  const map = new Map(productos.map((p) => [p.id, p]));
+
+  const query = buildProductQueryFromCart(carrito);
+  if (!query) return { ok: false, message: 'IDs de productos inválidos.' };
+
+  const productos = await Product.find(query);
 
   let serverTotal = 0;
   const faltantes = [];
 
   for (const item of carrito) {
-    const prod = map.get(item.id);
+    const prod = productos.find((p) => matchesItemToDoc(item, p));
     if (!prod) {
-      faltantes.push(item.id);
+      faltantes.push(item?.id ?? item?._id ?? item?.productKey);
       continue;
     }
     const cantidad = Number(item.cantidad || 0);
-    if (cantidad <= 0) return { ok: false, message: `Cantidad inválida para producto ${prod.nombre}.` };
-    if (prod.stock < cantidad) return { ok: false, message: `Stock insuficiente para "${prod.nombre}". Disponible: ${prod.stock}, solicitado: ${cantidad}.` };
+    if (!Number.isFinite(cantidad) || cantidad <= 0) {
+      return { ok: false, message: `Cantidad inválida para producto ${prod.nombre}.` };
+    }
+    if ((prod.stock || 0) < cantidad) {
+      return { ok: false, message: `Stock insuficiente para "${prod.nombre}". Disponible: ${prod.stock || 0}, solicitado: ${cantidad}.` };
+    }
     serverTotal += Number(prod.precio) * cantidad;
   }
 
@@ -188,24 +234,70 @@ async function validarYCalcularTotal(carrito) {
   return { ok: true, serverTotal };
 }
 
-// Descuento de stock seguro
+// Descuento de stock seguro (versión robusta con logs)
 async function descontarStockSeguro(carrito) {
-  const ops = carrito.map((item) => ({
-    updateOne: {
-      filter: { id: item.id, stock: { $gte: item.cantidad } },
-      update: { $inc: { stock: -item.cantidad } },
-    },
-  }));
-  const res = await Product.bulkWrite(ops, { ordered: true });
-  if (res.modifiedCount !== carrito.length) {
-    throw new Error('No se pudo descontar el stock de todos los productos (posible falta de stock).');
+  let ok = 0;
+
+  for (const item of carrito) {
+    // normaliza cantidad
+    const qty = Math.max(1, Math.floor(Number(item.cantidad || 0)));
+    const raw = item?.id ?? item?._id ?? item?.productKey;
+
+    if (!raw || !Number.isFinite(qty)) {
+      console.warn('[Stock] Item inválido en carrito:', item);
+      continue;
+    }
+
+    // coincide por id numérico o por _id
+    const matchOr = [];
+    const asNum = Number(raw);
+    if (Number.isFinite(asNum) && String(asNum) === String(raw)) {
+      matchOr.push({ id: asNum });
+    }
+    if (typeof raw === 'string' && Types.ObjectId.isValid(raw)) {
+      matchOr.push({ _id: new Types.ObjectId(raw) });
+    }
+    if (!matchOr.length) {
+      console.warn('[Stock] ID no válido para item:', raw, item);
+      continue;
+    }
+
+    // lee el producto
+    const prod = await Product.findOne({ $or: matchOr }).select('id _id nombre stock');
+    if (!prod) {
+      console.warn('[Stock] Producto no encontrado para', raw, '(item:', item, ')');
+      continue;
+    }
+
+    if ((prod.stock || 0) < qty) {
+      console.warn(`[Stock] Insuficiente: "${prod.nombre}" stock=${prod.stock} solicitado=${qty}`);
+      continue;
+    }
+
+    // aplica el descuento
+    const updated = await Product.findOneAndUpdate(
+      { $or: matchOr, stock: { $gte: qty } },
+      { $inc: { stock: -qty } },
+      { new: true }
+    ).select('id _id nombre stock');
+
+    if (updated) {
+      ok += 1;
+      console.log(`[Stock] "${updated.nombre}" descontado: ahora stock=${updated.stock}`);
+    } else {
+      console.warn('[Stock] No se pudo actualizar (condición no cumplida) para', prod);
+    }
+  }
+
+  console.log(`[Stock] Productos actualizados: ${ok}/${carrito.length}`);
+  if (ok < carrito.length) {
+    throw new Error('No se pudo descontar el stock de todos los productos (posible falta de stock o ID inválido).');
   }
 }
 
 // ─────────────────────────────────────────────────────────────
 // 6) ⚠️ WEBHOOK DE STRIPE (debe ir ANTES de los body-parsers)
 // ─────────────────────────────────────────────────────────────
-// (ESTE ES EL BLOQUE QUE ME PEDISTE TAL CUAL)
 app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
   console.log('[WEBHOOK] recibido', new Date().toISOString());
 
@@ -274,10 +366,10 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
       case 'payment_intent.payment_failed': {
         console.log('❌ payment_intent.payment_failed');
         const pi = event.data.object;
-        const orderId = pi.metadata?.order_id;
-        if (orderId) {
+        theOrderId = pi.metadata?.order_id;
+        if (theOrderId) {
           await Order.findOneAndUpdate(
-            { orderId, status: { $ne: 'PAGADO' } },
+            { orderId: theOrderId, status: { $ne: 'PAGADO' } },
             {
               status: 'PAGO FALLIDO',
               paymentError: pi.last_payment_error?.message || 'Error de pago desconocido',
@@ -315,7 +407,9 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // Inventario
 app.get('/api/products', async (req, res) => {
   try {
-    const products = await Product.find({ stock: { $gt: 0 } }).select('id nombre descripcion precio stock');
+    const products = await Product
+      .find({ stock: { $gt: 0 } })
+      .select('id _id nombre descripcion precio stock');
     res.json(products);
   } catch (error) {
     console.error(error);
@@ -327,6 +421,7 @@ app.get('/api/products', async (req, res) => {
 app.post('/api/create-payment-intent', async (req, res) => {
   const { carrito, cliente, total } = req.body;
   try {
+    console.log('[DEBUG] Carrito recibido:', carrito); // ayuda para verificar IDs
     const check = await validarYCalcularTotal(carrito);
     if (!check.ok) return res.status(400).json({ success: false, message: check.message });
 
@@ -518,7 +613,7 @@ app.post('/api/admin/catalogo', upload.single('archivoCatalogo'), async (req, re
 });
 
 // ─────────────────────────────────────────────────────────────
-// 9) Errores y Arranque
+/* 9) Errores y Arranque */
 // ─────────────────────────────────────────────────────────────
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason);

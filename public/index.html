@@ -2,121 +2,148 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tienda de Productos - Mi Empresa</title>
 
   <!-- Stripe -->
   <script src="https://js.stripe.com/v3/"></script>
 
   <!-- Estilos -->
-  <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <header>
-    <h1>🛒 Mis Productos</h1>
+  <header class="site-header">
+    <div class="container header-inner">
+      <h1 class="brand">🛒 Mis Productos</h1>
+
+      <!-- Botón visible SOLO en móviles para saltar al carrito -->
+      <a href="#carrito" class="cart-jump" aria-label="Ir al carrito">
+        Ver carrito
+      </a>
+    </div>
   </header>
 
-  <main>
+  <main class="container layout">
     <!-- Sección de productos -->
-    <section id="productos">
-      <h2>Nuestros Productos</h2>
-      <div id="lista-productos" class="productos-grid"></div>
+    <section id="productos" aria-labelledby="titulo-productos">
+      <div class="section-head">
+        <h2 id="titulo-productos">Nuestros Productos</h2>
+        <p class="section-sub">Calidad, precio y entrega rápida.</p>
+      </div>
+
+      <div id="lista-productos" class="productos-grid" role="list"></div>
     </section>
 
     <!-- Carrito y pago -->
-    <aside id="carrito">
-      <h2>Cesta de Compra</h2>
+    <aside id="carrito" aria-labelledby="titulo-carrito">
+      <div class="cart-card">
+        <h2 id="titulo-carrito" class="cart-title">Cesta de Compra</h2>
 
-      <ul id="lista-carrito"></ul>
-      <p class="total-line">Total: $<span id="total-carrito">0.00</span></p>
+        <ul id="lista-carrito" class="cart-list" aria-live="polite"></ul>
 
-      <!-- Formulario de orden -->
-      <form id="form-orden" novalidate>
-        <h3>Detalles de Recolección</h3>
+        <p class="total-line">
+          Total: $<span id="total-carrito">0.00</span>
+        </p>
 
-        <label for="nombre-cliente">Nombre Completo:</label>
-        <input
-          type="text"
-          id="nombre-cliente"
-          required
-          autocomplete="name"
-          inputmode="text"
-          placeholder="Tu nombre completo"
-        />
+        <!-- Formulario de orden -->
+        <form id="form-orden" novalidate class="order-form">
+          <h3 class="form-title">Detalles de Recolección</h3>
 
-        <label for="email-cliente">Correo Electrónico:</label>
-        <input
-          type="email"
-          id="email-cliente"
-          required
-          autocomplete="email"
-          inputmode="email"
-          placeholder="tucorreo@ejemplo.com"
-        />
+          <label for="nombre-cliente">Nombre Completo</label>
+          <input
+            type="text"
+            id="nombre-cliente"
+            required
+            autocomplete="name"
+            inputmode="text"
+            placeholder="Tu nombre completo"
+          />
 
-        <label for="fecha-recoleccion">Día de Recolección:</label>
-        <input
-          type="date"
-          id="fecha-recoleccion"
-          required
-          aria-describedby="fecha-ayuda"
-        />
-        <small id="fecha-ayuda" style="display:block; color:#6b7280;">
-          Selecciona una fecha a partir de hoy.
-        </small>
+          <label for="email-cliente">Correo Electrónico</label>
+          <input
+            type="email"
+            id="email-cliente"
+            required
+            autocomplete="email"
+            inputmode="email"
+            placeholder="tucorreo@ejemplo.com"
+          />
 
-        <label for="hora-recoleccion">Hora de Recolección:</label>
-        <input
-          type="time"
-          id="hora-recoleccion"
-          required
-          step="60"
-          min="08:00"
-          max="22:00"
-          value="08:00"
-          pattern="^[0-2]\d:[0-5]\d$"
-          inputmode="numeric"
-          aria-describedby="hora-ayuda"
-          title="Ingresa una hora válida entre 08:00 y 22:00"
-        />
-        <small id="hora-ayuda" style="display:block; color:#6b7280;">
-          Formato <strong>HH:MM</strong> (ej. 09:30). Rango permitido: 08:00–22:00.
-        </small>
+          <div class="row-2">
+            <div>
+              <label for="fecha-recoleccion">Día de Recolección</label>
+              <input
+                type="date"
+                id="fecha-recoleccion"
+                required
+                aria-describedby="fecha-ayuda"
+              />
+              <small id="fecha-ayuda" class="help">
+                Selecciona una fecha a partir de hoy.
+              </small>
+            </div>
 
-        <!-- 🔹 Stripe Payment Element -->
-        <div id="payment-element-container" style="margin-top: 20px; display: none;">
-        </div>
+            <div>
+              <label for="hora-recoleccion">Hora de Recolección</label>
+              <input
+                type="time"
+                id="hora-recoleccion"
+                required
+                step="60"
+                min="08:00"
+                max="22:00"
+                value="08:00"
+                pattern="^[0-2]\\d:[0-5]\\d$"
+                inputmode="numeric"
+                aria-describedby="hora-ayuda"
+                title="Ingresa una hora válida entre 08:00 y 22:00"
+              />
+              <small id="hora-ayuda" class="help">
+                Formato <strong>HH:MM</strong> (ej. 09:30). Rango: 08:00–22:00.
+              </small>
+            </div>
+          </div>
 
-        <!-- Botón de pago -->
+          <!-- 🔹 Stripe Payment Element -->
+          <div id="payment-element-container" style="margin-top:20px; display:none;"></div>
+
+          <!-- Botón de pago -->
+          <button type="submit" id="btn-iniciar-pago" class="btn btn-primary">
+            Iniciar Pago con Tarjeta
+          </button>
+        </form>
+
+        <!-- Botón de WhatsApp -->
         <button
-          type="submit"
-          id="btn-iniciar-pago"
-          style="margin-top:15px; background-color:#f0ad4e;"
+          id="btn-whatsapp-pedido"
+          class="whatsapp-btn"
+          data-phone="5215555555555"
+          aria-label="Enviar pedido por WhatsApp"
         >
-          Iniciar Pago con Tarjeta
+          Enviar Pedido por WhatsApp
         </button>
-      </form>
-
-      <!-- Botón de WhatsApp -->
-      <button
-        id="btn-whatsapp-pedido"
-        class="whatsapp-btn"
-        data-phone="5215555555555"
-        aria-label="Enviar pedido por WhatsApp"
-      >
-        Enviar Pedido por WhatsApp
-      </button>
+      </div>
     </aside>
   </main>
 
+  <footer class="site-footer">
+    <div class="container">
+      <p>© <span id="year"></span> Mi Empresa. Todos los derechos reservados.</p>
+    </div>
+  </footer>
+
   <noscript>
-    <p style="color:#b00020; padding:12px;">
+    <p class="nojs">
       Necesitas habilitar JavaScript para completar el pago e interactuar con el carrito.
     </p>
   </noscript>
 
   <!-- Script principal -->
+  <script>
+    // Actualiza el año del footer (no interfiere con tu script.js)
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
   <script src="script.js"></script>
 </body>
 </html>
