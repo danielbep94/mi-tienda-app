@@ -21,7 +21,7 @@
     <div class="admin-grid">
 
       <!-- Card 1: Buscar y actualizar estatus -->
-      <section class="card">
+      <section class="card" id="sec-actualizacion">
         <header class="card-head">
           <h2 class="card-title">1. Búsqueda y Actualización de Estatus</h2>
           <p class="card-sub">Busca una orden por su ID para ver detalles y cambiar su estado.</p>
@@ -36,6 +36,8 @@
         <div id="detalle-orden-buscada" class="order-detail" style="display:none;">
           <div class="detail-row"><strong>ID:</strong> <span id="detalle-id"></span></div>
           <div class="detail-row"><strong>Cliente:</strong> <span id="detalle-cliente"></span></div>
+          <!-- [ADMIN UX NEW] Mostrar email del cliente -->
+          <div class="detail-row"><strong>Email:</strong> <span id="detalle-email"></span></div>
           <div class="detail-row">
             <strong>Estatus Actual:</strong>
             <span id="detalle-status" class="status-badge">-</span>
@@ -44,7 +46,8 @@
 
         <label for="select-status" class="label">Nuevo Estatus</label>
         <select id="select-status" class="input">
-          <option value="PENDIENTE DE PAGO">PENDIENTE DE PAGO</option>
+          <option value="PAGO PENDIENTE">PAGO PENDIENTE</option>
+          <option value="PAGADO">PAGADO</option>
           <option value="EN PROCESO">EN PROCESO</option>
           <option value="LISTO PARA RECOGER">LISTO PARA RECOGER</option>
           <option value="COMPLETADO">COMPLETADO</option>
@@ -67,6 +70,8 @@
               <tr>
                 <th>ID</th>
                 <th>Cliente</th>
+                <!-- [ADMIN UX NEW] Columna de Email -->
+                <th>Email</th>
                 <th>Total</th>
                 <th>Estatus</th>
                 <th>Fecha</th>

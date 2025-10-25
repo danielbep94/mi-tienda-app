@@ -15,6 +15,10 @@ const { Types } = mongoose;
 const multer = require('multer');
 const xlsx = require('xlsx');
 
+// [AUTH NEW] deps
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
 // Stripe SDK + keys
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -27,12 +31,17 @@ const RECAPTCHA_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE ?? 0.5);
 // Modelos
 const Product = require('./models/Product');
 const Order = require('./models/Order');
+// [AUTH NEW] User model
+const User = require('./models/User');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 
 // Si estás detrás de un proxy (ngrok, render, nginx) esto permite leer req.ip real
 app.set('trust proxy', true);
+
+// [AUTH NEW] JWT secret
+const USER_JWT_SECRET = process.env.USER_JWT_SECRET || 'change_me';
 
 // ─────────────────────────────────────────────────────────────
 // 2) Validación temprana de variables de entorno críticas
@@ -173,15 +182,53 @@ async function enviarCorreoConfirmacionPago(orden) {
   }
 }
 
-/** ───────────────────────────────────────────────────────────
- *  Helpers de IDs para soportar id Numérico o _id (ObjectId)
- *  ───────────────────────────────────────────────────────────
- */
+// [AUTH WELCOME NEW] correo de bienvenida
+async function enviarCorreoBienvenida({ to, name }) {
+  if (!EMAIL_USER || !EMAIL_PASS || !to) return;
+  const mail = {
+    from: EMAIL_USER,
+    to,
+    subject: '🎉 ¡Bienvenido a Mi Tienda!',
+    html: `
+      <h2>¡Hola ${name || 'amigo'}!</h2>
+      <p>Gracias por registrarte en <strong>Mi Tienda</strong>.</p>
+      <p>Como miembro podrás recibir descuentos, llevar el historial de compras y más.</p>
+    `,
+  };
+  try {
+    await transporter.sendMail(mail);
+    console.log(`✉️  Correo de bienvenida enviado a ${to}`);
+  } catch (e) {
+    console.warn('[AUTH WELCOME NEW] error enviando bienvenida:', e?.message);
+  }
+}
+
+// [AUTH RESET NEW] helpers reset password (token por email)
+function hashTokenSha256(token) {
+  // [NOTE] Actualmente NO usamos el hash porque el modelo guarda el token en claro
+  // (passwordResetToken). Dejamos la función por si más adelante deseas cambiar
+  // a guardar hash en DB.
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+function buildBaseUrlFromReq(req) {
+  // Usa x-forwarded headers si existen; fallback a Origin/Host
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host  = req.headers['x-forwarded-host']  || req.headers.host;
+  const baseFromHeaders = (proto && host) ? `${proto}://${host}` : null;
+  return baseFromHeaders || req.headers.origin || (process.env.APP_BASE_URL || 'http://localhost:3000');
+}
+
+/* ────────────────────────────────────────────────────────────
+   [FIX HELPERS NEW] AÑADIDO: helpers de carrito/stock
+   Motivo: evitar "validarYCalcularTotal is not defined" y
+   centralizar la validación de totales/stock.
+   NOTA: Declaraciones de función (se hoistean).
+   ──────────────────────────────────────────────────────────── */
 function buildProductQueryFromCart(carrito) {
   const idsNum = [];
   const idsObj = [];
 
-  for (const item of carrito) {
+  for (const item of carrito || []) {
     const raw = item?.id ?? item?._id ?? item?.productKey;
     if (raw == null) continue;
 
@@ -206,7 +253,6 @@ function matchesItemToDoc(item, doc) {
   return String(doc._id) === String(raw);
 }
 
-// Validación de carrito contra DB (acepta id o _id)
 async function validarYCalcularTotal(carrito) {
   if (!Array.isArray(carrito) || carrito.length === 0) {
     return { ok: false, message: 'Carrito vacío.' };
@@ -241,11 +287,10 @@ async function validarYCalcularTotal(carrito) {
   return { ok: true, serverTotal };
 }
 
-// Descuento de stock seguro (versión robusta con logs)
 async function descontarStockSeguro(carrito) {
   let ok = 0;
 
-  for (const item of carrito) {
+  for (const item of carrito || []) {
     const qty = Math.max(1, Math.floor(Number(item.cantidad || 0)));
     const raw = item?.id ?? item?._id ?? item?.productKey;
 
@@ -292,11 +337,14 @@ async function descontarStockSeguro(carrito) {
     }
   }
 
-  console.log(`[Stock] Productos actualizados: ${ok}/${carrito.length}`);
-  if (ok < carrito.length) {
+  console.log(`[Stock] Productos actualizados: ${ok}/${(carrito || []).length}`);
+  if (ok < (carrito || []).length) {
     throw new Error('No se pudo descontar el stock de todos los productos (posible falta de stock o ID inválido).');
   }
 }
+/* ────────────────────────────────────────────────────────────
+   [FIN FIX HELPERS NEW]
+   ──────────────────────────────────────────────────────────── */
 
 // ─────────────────────────────────────────────────────────────
 // 5.1) Helper reCAPTCHA (usa fetch nativo o node-fetch dinámico)
@@ -339,6 +387,30 @@ app.post('/api/debug-recaptcha', express.json(), async (req, res) => {
   const result = await verifyRecaptcha(token, req.ip);
   res.json(result);
 });
+
+// ─────────────────────────────────────────────────────────────
+// [AUTH NEW] Helpers JWT & middleware
+// ─────────────────────────────────────────────────────────────
+function signUserToken(user) {
+  return jwt.sign(
+    { uid: String(user._id), email: user.email, name: user.name || '' },
+    USER_JWT_SECRET,
+    { expiresIn: '15d' }
+  );
+}
+
+function authOptional(req, _res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (token) {
+    try {
+      req.user = jwt.verify(token, USER_JWT_SECRET);
+    } catch {
+      req.user = null;
+    }
+  }
+  next();
+}
 
 // ─────────────────────────────────────────────────────────────
 // 6) ⚠️ WEBHOOK DE STRIPE (debe ir ANTES de los body-parsers)
@@ -403,7 +475,37 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
           { new: true }
         );
 
-        if (actualizado) await enviarCorreoConfirmacionPago(actualizado);
+        if (actualizado) {
+          // [AUTH NEW] actualizar métricas de usuario si existe con ese email
+          try {
+            const userEmail = actualizado?.cliente?.email;
+            if (userEmail) {
+              const u = await User.findOne({ email: userEmail });
+              if (u) {
+                u.transactionsCount = (u.transactionsCount || 0) + 1;
+                u.lifetimeSpent = Number((u.lifetimeSpent || 0) + Number(actualizado.total || 0));
+                u.lastOrderId = actualizado.orderId;
+                await u.save();
+              }
+              // Si deseas crear el usuario automáticamente cuando paga, descomenta:
+              // else {
+              //   const placeholderHash = await bcrypt.hash(crypto.randomBytes(12).toString('hex'), 10);
+              //   await User.create({
+              //     email: userEmail,
+              //     name: actualizado?.cliente?.nombre || '',
+              //     passwordHash: placeholderHash,
+              //     transactionsCount: 1,
+              //     lifetimeSpent: Number(actualizado.total || 0),
+              //     lastOrderId: actualizado.orderId,
+              //   });
+              // }
+            }
+          } catch (uErr) {
+            console.warn('[AUTH NEW] No se pudo actualizar métricas de usuario:', uErr?.message);
+          }
+
+          await enviarCorreoConfirmacionPago(actualizado);
+        }
         break;
       }
 
@@ -443,6 +545,144 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// ─────────────────────────────────────────────────────────────
+// [AUTH NEW] Endpoints de autenticación (signup/login/me)
+// ─────────────────────────────────────────────────────────────
+app.post('/api/auth/signup', async (req, res) => {
+  try {
+    const { email, name, password, marketingOptIn } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email y password son requeridos.' });
+    }
+    if (String(password).length < 6) {
+      return res.status(400).json({ success: false, message: 'El password debe tener al menos 6 caracteres.' });
+    }
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(409).json({ success: false, message: 'Este email ya está registrado.' });
+    }
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const user = await User.create({
+      email,
+      name: name || '',
+      passwordHash,
+      marketingOptIn: marketingOptIn !== false,
+    });
+
+    // [AUTH WELCOME NEW] enviar correo de bienvenida (no bloqueante)
+    enviarCorreoBienvenida({ to: user.email, name: user.name }).catch(() => {});
+
+    const token = signUserToken(user);
+    res.json({ success: true, token, user: { email: user.email, name: user.name, transactionsCount: user.transactionsCount, lifetimeSpent: user.lifetimeSpent } });
+  } catch (e) {
+    console.error('[AUTH NEW] signup error:', e.message);
+    res.status(500).json({ success: false, message: 'Error al registrar usuario.' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email y password son requeridos.' });
+    }
+    const user = await User.findOne({ email });
+    if (!user) return res.status(401).json({ success: false, message: 'Credenciales inválidas.' });
+    const ok = await bcrypt.compare(String(password), user.passwordHash || '');
+    if (!ok) return res.status(401).json({ success: false, message: 'Credenciales inválidas.' });
+    const token = signUserToken(user);
+    res.json({ success: true, token, user: { email: user.email, name: user.name, transactionsCount: user.transactionsCount, lifetimeSpent: user.lifetimeSpent, lastOrderId: user.lastOrderId } });
+  } catch (e) {
+    console.error('[AUTH NEW] login error:', e.message);
+    res.status(500).json({ success: false, message: 'Error al iniciar sesión.' });
+  }
+});
+
+app.get('/api/auth/me', authOptional, async (req, res) => {
+  try {
+    if (!req.user?.email) return res.status(401).json({ success: false, message: 'No autenticado.' });
+    const user = await User.findOne({ email: req.user.email }).select('email name transactionsCount lifetimeSpent lastOrderId');
+    if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
+    res.json({ success: true, user });
+  } catch (e) {
+    res.status(500).json({ success: false, message: 'Error al cargar perfil.' });
+  }
+});
+
+// [AUTH RESET NEW] Solicitar restablecimiento de contraseña (envía email con link)
+app.post('/api/auth/forgot', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ success: false, message: 'Email requerido.' });
+
+    const user = await User.findOne({ email });
+    // Respondemos 200 aunque no exista para no revelar cuentas
+    if (!user) return res.json({ success: true, message: 'Si el email existe, enviaremos instrucciones.' });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+
+    // [AUTH RESET FIX] usar los campos del modelo: passwordResetToken / passwordResetExpires
+    user.passwordResetToken   = rawToken;                                     // [AUTH RESET FIX]
+    user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000);        // [AUTH RESET FIX]
+    await user.save();
+
+    const baseUrl = buildBaseUrlFromReq(req);
+    const link = `${baseUrl}/reset-password.html?token=${encodeURIComponent(rawToken)}&email=${encodeURIComponent(email)}`;
+
+    if (EMAIL_USER && EMAIL_PASS) {
+      await transporter.sendMail({
+        from: EMAIL_USER,
+        to: email,
+        subject: '🔐 Restablecer contraseña - Mi Tienda',
+        html: `
+          <p>Has solicitado restablecer tu contraseña.</p>
+          <p>Haz clic en el siguiente enlace (válido por 1 hora):</p>
+          <p><a href="${link}">${link}</a></p>
+          <p>Si no solicitaste este cambio, ignora este mensaje.</p>
+        `,
+      });
+    }
+    res.json({ success: true, message: 'Si el email existe, enviaremos instrucciones.' });
+  } catch (e) {
+    console.error('[AUTH RESET NEW] forgot error:', e.message);
+    res.status(500).json({ success: false, message: 'No se pudo procesar la solicitud.' });
+  }
+});
+
+// [AUTH RESET NEW] Restablecer contraseña con token
+app.post('/api/auth/reset', async (req, res) => {
+  try {
+    const { email, token, newPassword } = req.body || {};
+    if (!email || !token || !newPassword) {
+      return res.status(400).json({ success: false, message: 'Datos incompletos.' });
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ success: false, message: 'El password debe tener al menos 6 caracteres.' });
+    }
+
+    // [AUTH RESET FIX] buscar por los campos correctos del modelo
+    const user = await User.findOne({
+      email,
+      passwordResetToken: token,                                             // [AUTH RESET FIX]
+      passwordResetExpires: { $gt: new Date() }                              // [AUTH RESET FIX]
+    });
+
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Token inválido o expirado.' });
+    }
+
+    user.passwordHash = await bcrypt.hash(String(newPassword), 10);
+    user.passwordResetToken = null;                                          // [AUTH RESET FIX]
+    user.passwordResetExpires = null;                                        // [AUTH RESET FIX]
+    await user.save();
+
+    res.json({ success: true, message: 'Contraseña actualizada correctamente.' });
+  } catch (e) {
+    console.error('[AUTH RESET NEW] reset error:', e.message);
+    res.status(500).json({ success: false, message: 'No se pudo actualizar la contraseña.' });
+  }
+});
 
 // ─────────────────────────────────────────────────────────────
 // 8) Endpoints de negocio

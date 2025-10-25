@@ -20,6 +20,10 @@ const detalleCliente = document.getElementById('detalle-cliente');
 const detalleStatus = document.getElementById('detalle-status');
 
 let currentOrderId = null;
+let allOrders = []; // [ADMIN FILTER NEW] cache global para filtrar/exportar
+
+// [ADMIN CSV FIX] helper para querySelectorAll (faltaba en este archivo)
+const $$ = (sel) => document.querySelectorAll(sel);
 
 // -------------------------------------------------------------
 // Utilidades de UI/formatos
@@ -30,8 +34,6 @@ function formatMoney(n) {
 }
 
 function formatFechaCorta(fechaStr) {
-  // Si viene "DD/MM/AAAA, HH:mm:ss" o "MM/DD/AAAA, ..." intentamos construir Date
-  // Si falla, devolvemos el trozo de fecha previo a la coma (compatible con tu back)
   if (!fechaStr) return '-';
   const soloFecha = String(fechaStr).split(',')[0]?.trim();
   const d = new Date(fechaStr);
@@ -43,16 +45,15 @@ function formatFechaCorta(fechaStr) {
 
 function obtenerColorStatus(status) {
   switch (status) {
-    case 'LISTO PARA RECOGER': return '#16a34a'; // Verde
-    case 'EN PROCESO': return '#0ea5e9';         // Azul
-    case 'PENDIENTE DE PAGO': return '#a16207';  // Amarillo oscuro
-    case 'COMPLETADO': return '#0f766e';         // Verde oscuro
-    case 'CANCELADO': return '#ef4444';          // Rojo
-    default: return '#64748b';                   // Gris/azulado
+    case 'LISTO PARA RECOGER': return '#16a34a';
+    case 'EN PROCESO': return '#0ea5e9';
+    case 'PENDIENTE DE PAGO': return '#a16207';
+    case 'COMPLETADO': return '#0f766e';
+    case 'CANCELADO': return '#ef4444';
+    default: return '#64748b';
   }
 }
 
-// Clases de badge según estado (para estilos avanzados si pegaste el CSS sugerido)
 function badgeClasePorEstado(status) {
   const s = String(status || '').toUpperCase();
   if (s.includes('CANCEL')) return 'badge-cancelado';
@@ -63,7 +64,6 @@ function badgeClasePorEstado(status) {
 }
 
 function setStatusBadge(el, statusText) {
-  // Mantiene compatibilidad: color inline + clases nuevas si existen
   el.textContent = statusText || '-';
   el.style.backgroundColor = obtenerColorStatus(statusText);
   el.className = 'status-badge ' + badgeClasePorEstado(statusText);
@@ -96,7 +96,7 @@ function ocultarMensaje(targetDiv = statusMensajeDiv) {
   targetDiv.style.display = 'none';
   targetDiv.textContent = '';
   targetDiv.removeAttribute('style');
-  targetDiv.className = 'alert'; // conserva clase base si pegaste el CSS del panel
+  targetDiv.className = 'alert';
 }
 
 // -------------------------------------------------------------
@@ -104,43 +104,16 @@ function ocultarMensaje(targetDiv = statusMensajeDiv) {
 // -------------------------------------------------------------
 async function listarOrdenes() {
   try {
-    // Pre-estado: “cargando…”
     ordenesTbody.innerHTML = `
       <tr><td colspan="5" style="padding:14px; color:#667085;">Cargando órdenes…</td></tr>
     `;
-
     const response = await fetch('/api/ordenes/todas');
     const result = await response.json();
 
     if (result.success) {
       ordenesTbody.innerHTML = '';
-      // Ya vienen en orden por fecha desc desde el back; si no, puedes invertir:
-      // const ordenes = result.ordenes.slice().reverse();
-      const ordenes = result.ordenes || [];
-
-      if (!ordenes.length) {
-        ordenesTbody.innerHTML = `
-          <tr><td colspan="5" style="padding:14px; color:#667085;">No hay órdenes todavía.</td></tr>
-        `;
-        return;
-      }
-
-      ordenes.forEach((orden) => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${orden.orderId}</td>
-          <td>${orden?.cliente?.nombre || '-'}</td>
-          <td>${formatMoney(orden.total)}</td>
-          <td>
-            <span class="status-badge ${badgeClasePorEstado(orden.status)}"
-                  style="background-color:${obtenerColorStatus(orden.status)};">
-              ${orden.status}
-            </span>
-          </td>
-          <td>${formatFechaCorta(orden.fechaCreacion)}</td>
-        `;
-        ordenesTbody.appendChild(tr);
-      });
+      allOrders = result.ordenes || []; // [ADMIN FILTER NEW]
+      renderOrdenes(allOrders);
     } else {
       ordenesTbody.innerHTML = '<tr><td colspan="5">Error al cargar las órdenes.</td></tr>';
     }
@@ -148,6 +121,32 @@ async function listarOrdenes() {
     console.error('Error listarOrdenes:', error);
     ordenesTbody.innerHTML = '<tr><td colspan="5">Error de conexión con el servidor.</td></tr>';
   }
+}
+
+// [ADMIN FILTER NEW] Renderizar tabla con filtros aplicados
+function renderOrdenes(list) {
+  ordenesTbody.innerHTML = '';
+  if (!list.length) {
+    ordenesTbody.innerHTML = `<tr><td colspan="5" style="padding:14px;">Sin resultados.</td></tr>`;
+    return;
+  }
+  list.forEach((orden) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${orden.orderId}</td>
+      <td>${orden?.cliente?.nombre || '-'}</td>
+      <td>${orden?.cliente?.email || '-'}</td>
+      <td>${formatMoney(orden.total)}</td>
+      <td>
+        <span class="status-badge ${badgeClasePorEstado(orden.status)}"
+              style="background-color:${obtenerColorStatus(orden.status)};">
+          ${orden.status}
+        </span>
+      </td>
+      <td>${formatFechaCorta(orden.fechaCreacion)}</td>
+    `;
+    ordenesTbody.appendChild(tr);
+  });
 }
 
 // -------------------------------------------------------------
@@ -159,7 +158,6 @@ async function buscarOrden() {
     mostrarMensaje('Ingrese un ID para buscar.', 'error');
     return;
   }
-
   try {
     btnBuscarOrden.disabled = true;
     btnBuscarOrden.textContent = 'Buscando…';
@@ -170,14 +168,12 @@ async function buscarOrden() {
 
     if (result.success && result.orden) {
       const orden = result.orden;
-
       detalleId.textContent = orden.orderId;
       detalleCliente.textContent = `${orden?.cliente?.nombre || '-'} (${orden?.cliente?.email || '-'})`;
       setStatusBadge(detalleStatus, orden.status);
-
       detalleOrdenBuscadaDiv.style.display = 'block';
       currentOrderId = orden.orderId;
-      mostrarMensaje(`Orden ${orden.orderId} cargada. Ahora puedes actualizar el estatus.`, 'success');
+      mostrarMensaje(`Orden ${orden.orderId} cargada.`, 'success');
     } else {
       mostrarMensaje(`Orden con ID ${orderId} no encontrada.`, 'error');
       detalleOrdenBuscadaDiv.style.display = 'none';
@@ -195,11 +191,7 @@ async function buscarOrden() {
 async function actualizarStatusOrden() {
   const orderId = currentOrderId || inputOrderId.value.trim();
   const nuevoStatus = selectStatus.value;
-
-  if (!orderId) {
-    mostrarMensaje('Por favor, busque una orden o ingrese un ID válido.', 'error');
-    return;
-  }
+  if (!orderId) return mostrarMensaje('Por favor, busque una orden o ingrese un ID válido.', 'error');
 
   try {
     btnActualizarStatus.disabled = true;
@@ -211,21 +203,17 @@ async function actualizarStatusOrden() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId, nuevoStatus }),
     });
-
     const result = await response.json();
 
     if (result.success) {
-      mostrarMensaje(`✅ Éxito: ${result.message}`, 'success');
-      // Si estabas mostrando detalles, actualiza la badge
+      mostrarMensaje(`✅ ${result.message}`, 'success');
       setStatusBadge(detalleStatus, nuevoStatus);
-      // Refresca historial
       listarOrdenes();
-      // Limpia búsqueda para el siguiente flujo
       inputOrderId.value = '';
       currentOrderId = null;
       detalleOrdenBuscadaDiv.style.display = 'none';
     } else {
-      mostrarMensaje(`❌ Error: ${result.message}`, 'error');
+      mostrarMensaje(`❌ ${result.message}`, 'error');
     }
   } catch (error) {
     console.error('actualizarStatusOrden error:', error);
@@ -241,29 +229,18 @@ async function actualizarStatusOrden() {
 // -------------------------------------------------------------
 formCatalogoUpload.addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (catalogoMensaje) {
-    catalogoMensaje.style.display = 'block';
-  }
+  if (catalogoMensaje) catalogoMensaje.style.display = 'block';
   mostrarMensaje('Subiendo y procesando el archivo…', 'info', catalogoMensaje);
-
   const formData = new FormData(formCatalogoUpload);
-
   try {
-    const response = await fetch('/api/admin/catalogo', {
-      method: 'POST',
-      body: formData,
-    });
-
+    const response = await fetch('/api/admin/catalogo', { method: 'POST', body: formData });
     const result = await response.json();
-
     if (result.success) {
-      mostrarMensaje(`✅ ${result.message} ¡Inventario actualizado!`, 'success', catalogoMensaje);
-      // (Opcional) refrescar historial aunque afecte inventario:
+      mostrarMensaje(`✅ ${result.message}`, 'success', catalogoMensaje);
       listarOrdenes();
-      // Limpia el input file para evitar reenvío accidental
       formCatalogoUpload.reset();
     } else {
-      mostrarMensaje(`❌ Error en la carga: ${result.message}`, 'error', catalogoMensaje);
+      mostrarMensaje(`❌ ${result.message}`, 'error', catalogoMensaje);
     }
   } catch (error) {
     console.error('Error de subida:', error);
@@ -272,12 +249,116 @@ formCatalogoUpload.addEventListener('submit', async (e) => {
 });
 
 // -------------------------------------------------------------
-// Inicialización y eventos
+// [ADMIN FILTER NEW] Filtros y exportación
+// -------------------------------------------------------------
+function getFilteredList() {
+  const statusSel = document.getElementById('filtro-status')?.value || 'TODOS';
+  const emailTerm = document.getElementById('filtro-email')?.value.trim().toLowerCase();
+  const desde = document.getElementById('filtro-desde')?.value;
+  const hasta = document.getElementById('filtro-hasta')?.value;
+
+  let filtered = [...allOrders];
+  if (statusSel !== 'TODOS') filtered = filtered.filter(o => o.status === statusSel);
+  if (emailTerm) {
+    filtered = filtered.filter(o =>
+      (o?.cliente?.email || '').toLowerCase().includes(emailTerm) ||
+      (o?.cliente?.nombre || '').toLowerCase().includes(emailTerm)
+    );
+  }
+  if (desde) {
+    const d1 = new Date(desde);
+    filtered = filtered.filter(o => new Date(o.fechaCreacion) >= d1);
+  }
+  if (hasta) {
+    const d2 = new Date(hasta);
+    filtered = filtered.filter(o => new Date(o.fechaCreacion) <= d2);
+  }
+  return filtered;
+}
+
+function aplicarFiltros() {
+  renderOrdenes(getFilteredList());
+}
+
+// [ADMIN CSV IMPROVE] Exportar a CSV desde la lista filtrada + descarga robusta
+function exportarCSV() {
+  try {
+    const list = getFilteredList();
+    if (!list.length) {
+      mostrarMensaje('No hay filas para exportar.', 'error');
+      return;
+    }
+
+    const rows = [['ID','Cliente','Email','Total','Estatus','Fecha']];
+    list.forEach(o => {
+      rows.push([
+        o.orderId,
+        o?.cliente?.nombre || '-',
+        o?.cliente?.email || '-',
+        Number(o.total || 0).toFixed(2),
+        o.status || '-',
+        formatFechaCorta(o.fechaCreacion)
+      ]);
+    });
+
+    const csv = rows.map(r => r.map(x => `"${String(x).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ordenes_${new Date().toISOString().slice(0,10)}.csv`;
+    a.style.display = 'none';
+    document.body.appendChild(a);      // Safari/iOS necesita que el link esté en el DOM
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }, 0);
+  } catch (e) {
+    console.error('exportarCSV error:', e);
+    mostrarMensaje('No se pudo exportar el CSV.', 'error');
+  }
+}
+
+// [ADMIN FILTER NEW] Generar controles dinámicamente en la parte superior de la tabla
+function crearControlesFiltros() {
+  const tableWrap = document.querySelector('.table-wrap');
+  if (!tableWrap) return;
+
+  const div = document.createElement('div');
+  div.style.marginBottom = '10px';
+  div.innerHTML = `
+    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+      <select id="filtro-status" class="input" style="max-width:180px;">
+        <option value="TODOS">Todos los Estatus</option>
+        <option value="PAGO PENDIENTE">PAGO PENDIENTE</option>
+        <option value="PAGADO">PAGADO</option>
+        <option value="EN PROCESO">EN PROCESO</option>
+        <option value="LISTO PARA RECOGER">LISTO PARA RECOGER</option>
+        <option value="COMPLETADO">COMPLETADO</option>
+        <option value="CANCELADO">CANCELADO</option>
+      </select>
+      <input type="search" id="filtro-email" placeholder="Buscar por email o nombre" class="input" style="max-width:220px;">
+      <input type="date" id="filtro-desde" class="input" style="max-width:150px;">
+      <input type="date" id="filtro-hasta" class="input" style="max-width:150px;">
+      <button id="btn-exportar-csv" class="btn btn-success" type="button">Exportar CSV</button>
+    </div>
+  `;
+  tableWrap.parentNode.insertBefore(div, tableWrap);
+
+  // Eventos
+  div.querySelectorAll('input, select').forEach(el => el.addEventListener('input', aplicarFiltros));
+  div.querySelector('#btn-exportar-csv').addEventListener('click', exportarCSV);
+}
+
+// -------------------------------------------------------------
+// Inicialización
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
   listarOrdenes();
+  crearControlesFiltros(); // [ADMIN FILTER NEW]
 
-  // Enter en el campo de búsqueda
   inputOrderId.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -285,6 +366,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
-
 btnActualizarStatus.addEventListener('click', actualizarStatusOrden);
 btnBuscarOrden.addEventListener('click', buscarOrden);

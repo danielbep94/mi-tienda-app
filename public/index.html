@@ -13,17 +13,52 @@
     // ⚠️ Usa EXACTAMENTE la clave del sitio de esta key v3 (no la secreta)
     window.RECAPTCHA_SITE_KEY = '6LeHu_YrAAAAAE9ViEhbkMXR8nWVdllAOseAuSFz';
   </script>
-  <!-- Sugerencia: evita 'render=explicit'; usa v3 por dominio y ejecuta con execute(key, {action}) -->
   <script src="https://www.google.com/recaptcha/api.js?render=6LeHu_YrAAAAAE9ViEhbkMXR8nWVdllAOseAuSFz" async defer></script>
 
   <!-- Estilos -->
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- [AUTH NEW] estilos mínimos del modal y barra -->
+  <style>
+    /* Toast */
+    #toast{display:none;position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+      background:#111;color:#fff;padding:10px 14px;border-radius:8px;z-index:9999;font-size:.95rem}
+
+    /* Auth Bar */
+    .auth-actions{display:flex;gap:8px;align-items:center}
+    .auth-badge{display:none;background:#eef;border:1px solid #cdd;padding:4px 8px;border-radius:6px}
+    .btn{cursor:pointer}
+    .btn-outline{background:#fff;border:1px solid #ddd;padding:6px 10px;border-radius:6px}
+    .btn-link{background:transparent;border:none;color:#2563eb;cursor:pointer}
+    .btn-danger{background:#ef4444;color:#fff;border:none;padding:6px 10px;border-radius:6px}
+
+    /* Modal */
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9998;overflow:auto}
+    .modal-content{max-width:480px;margin:60px auto;background:#fff;border-radius:10px;padding:16px}
+    .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .tabs{display:flex;gap:8px;margin-bottom:10px}
+    .tabs button[aria-selected="true"]{font-weight:700;text-decoration:underline}
+    .auth-form label{display:block;margin-top:10px}
+    .auth-form input{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px}
+    .auth-form .row{display:flex;align-items:center;gap:8px;margin-top:8px}
+    .auth-form .actions{margin-top:14px}
+    .auth-form .actions button{width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px}
+    .close-x{background:transparent;border:none;font-size:1.2rem;cursor:pointer}
+  </style>
 </head>
 
 <body>
   <header class="site-header">
     <div class="container header-inner">
       <h1 class="brand">🛒 Mis Productos</h1>
+
+      <!-- [AUTH NEW] Barra de usuario -->
+      <div class="auth-actions">
+        <span id="auth-user-badge" class="auth-badge"></span>
+        <button id="btn-open-login" class="btn btn-outline" type="button">Iniciar sesión</button>
+        <button id="btn-open-signup" class="btn btn-link" type="button">Crear cuenta</button>
+        <button id="btn-logout" class="btn btn-danger" type="button" style="display:none;">Salir</button>
+      </div>
 
       <!-- Botón visible SOLO en móviles para saltar al carrito -->
       <a href="#carrito" class="cart-jump" aria-label="Ir al carrito">
@@ -137,6 +172,58 @@
       </div>
     </aside>
   </main>
+
+  <!-- [AUTH NEW] Modal de autenticación -->
+  <div id="auth-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="modal-content">
+      <div class="modal-head">
+        <h3 id="auth-title" style="margin:0;">Cuenta</h3>
+        <button id="auth-modal-close" class="close-x" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button id="tab-login"  role="tab" aria-selected="true"  type="button">Iniciar sesión</button>
+        <button id="tab-signup" role="tab" aria-selected="false" type="button">Crear cuenta</button>
+      </div>
+
+      <!-- Login -->
+      <form id="form-login" class="auth-form" autocomplete="on">
+        <label for="login-email">Correo</label>
+        <input id="login-email" type="email" required autocomplete="email" placeholder="tucorreo@ejemplo.com"/>
+
+        <label for="login-password">Contraseña</label>
+        <input id="login-password" type="password" required autocomplete="current-password" placeholder="Tu contraseña"/>
+
+        <div class="actions">
+          <button type="submit">Entrar</button>
+        </div>
+      </form>
+
+      <!-- Signup -->
+      <form id="form-signup" class="auth-form" style="display:none;" autocomplete="on">
+        <label for="signup-name">Nombre</label>
+        <input id="signup-name" type="text" autocomplete="name" placeholder="Tu nombre (opcional)"/>
+
+        <label for="signup-email">Correo</label>
+        <input id="signup-email" type="email" required autocomplete="email" placeholder="tucorreo@ejemplo.com"/>
+
+        <label for="signup-password">Contraseña</label>
+        <input id="signup-password" type="password" required autocomplete="new-password" placeholder="Mínimo 6 caracteres"/>
+
+        <div class="row">
+          <input id="signup-optin" type="checkbox" checked />
+          <label for="signup-optin" style="margin:0;">Quiero recibir promociones</label>
+        </div>
+
+        <div class="actions">
+          <button type="submit">Crear cuenta</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast"></div>
 
   <footer class="site-footer">
     <div class="container">

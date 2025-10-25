@@ -30,6 +30,122 @@ const btnIniciarPago = document.getElementById('btn-iniciar-pago');
 const paymentContainer = document.getElementById('payment-element-container');
 
 // ─────────────────────────────────────────────────────────────
+// [AUTH NEW] UI refs & helpers (no se remueven líneas previas)
+// ─────────────────────────────────────────────────────────────
+const AUTH_TOKEN_KEY = 'AUTH_TOKEN_V1';
+const authModal = $('#auth-modal');
+const btnOpenLogin = $('#btn-open-login');
+const btnOpenSignup = $('#btn-open-signup');
+const btnLogout = $('#btn-logout');
+const authUserBadge = $('#auth-user-badge');
+const authModalClose = $('#auth-modal-close');
+const tabLogin = $('#tab-login');
+const tabSignup = $('#tab-signup');
+const formLogin = $('#form-login');
+const formSignup = $('#form-signup');
+const toastEl = $('#toast');
+
+// [AUTH NEW] mini-toast
+function showToast(msg, ms = 2800) {
+  if (!toastEl) return alert(msg);
+  toastEl.textContent = msg;
+  toastEl.style.display = 'block';
+  setTimeout(() => (toastEl.style.display = 'none'), ms);
+}
+
+// [AUTH NEW] token helpers
+function getAuthToken() {
+  try { return localStorage.getItem(AUTH_TOKEN_KEY) || null; } catch { return null; }
+}
+function setAuthToken(token) {
+  try {
+    if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch {}
+}
+async function fetchAuth(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  const token = getAuthToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  headers.set('Content-Type', 'application/json');
+  return fetch(url, { ...opts, headers });
+}
+
+// [AUTH NEW] actualizar barra de usuario
+function updateAuthUI(user) {
+  const isLogged = !!(user && (user.name || user.email));
+  if (isLogged) {
+    authUserBadge.style.display = 'inline-flex';
+    authUserBadge.textContent = `Hola, ${user.name || user.email}`;
+    btnLogout.style.display = '';
+    btnOpenLogin.style.display = 'none';
+    btnOpenSignup.style.display = 'none';
+    // auto-rellenar nombre/email del formulario de compra si están vacíos
+    if (user.name && nombreClienteInput && !nombreClienteInput.value) nombreClienteInput.value = user.name;
+    if (user.email && emailClienteInput && !emailClienteInput.value) emailClienteInput.value = user.email;
+  } else {
+    authUserBadge.style.display = 'none';
+    authUserBadge.textContent = '';
+    btnLogout.style.display = 'none';
+    btnOpenLogin.style.display = '';
+    btnOpenSignup.style.display = '';
+  }
+}
+
+// [AUTH NEW] abrir/cerrar modal + tabs
+function openAuthModal(mode = 'login') {
+  if (!authModal) return;
+  authModal.style.display = 'block';
+  switchTab(mode);
+}
+function closeAuthModal() {
+  if (!authModal) return;
+  authModal.style.display = 'none';
+}
+function switchTab(mode) {
+  if (!tabLogin || !tabSignup || !formLogin || !formSignup) return;
+  if (mode === 'signup') {
+    tabSignup.setAttribute('aria-selected', 'true');
+    tabLogin.setAttribute('aria-selected', 'false');
+    formSignup.style.display = '';
+    formLogin.style.display = 'none';
+  } else {
+    tabLogin.setAttribute('aria-selected', 'true');
+    tabSignup.setAttribute('aria-selected', 'false');
+    formLogin.style.display = '';
+    formSignup.style.display = 'none';
+  }
+}
+
+// [AUTH NEW] UI: “¿Olvidaste tu contraseña?”
+(function addForgotLink() {
+  if (!formLogin) return;
+  const link = document.createElement('button');
+  link.type = 'button';
+  link.className = 'btn-link';
+  link.textContent = '¿Olvidaste tu contraseña?';
+  link.style.marginTop = '8px';
+  link.addEventListener('click', async () => {
+    const email = prompt('Ingresa tu correo para restablecer la contraseña:');
+    if (!email) return;
+    if (!EMAIL_RE.test(email)) return showToast('Correo inválido.');
+    try {
+      const r = await fetch('/api/auth/forgot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || 'No se pudo enviar el correo.');
+      showToast('Si el correo existe, se enviaron instrucciones.');
+    } catch (e) {
+      showToast(e.message || 'No se pudo procesar la solicitud.');
+    }
+  });
+  formLogin.appendChild(link);
+})();
+
+// ─────────────────────────────────────────────────────────────
 // reCAPTCHA v3 helper
 // ─────────────────────────────────────────────────────────────
 async function getRecaptchaToken(action = 'checkout') {
@@ -353,8 +469,148 @@ function enviarPedidoWhatsapp() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// [AUTH NEW] Listeners de autenticación (abrir/cerrar, login/signup, logout)
+// ─────────────────────────────────────────────────────────────
+if (btnOpenLogin) btnOpenLogin.addEventListener('click', () => openAuthModal('login'));
+if (btnOpenSignup) btnOpenSignup.addEventListener('click', () => openAuthModal('signup'));
+if (authModalClose) authModalClose.addEventListener('click', closeAuthModal);
+if (tabLogin) tabLogin.addEventListener('click', () => switchTab('login'));
+if (tabSignup) tabSignup.addEventListener('click', () => switchTab('signup'));
+
+if (btnLogout) btnLogout.addEventListener('click', () => {
+  setAuthToken(null);
+  updateAuthUI(null);
+  showToast('Sesión cerrada.');
+});
+
+// Login
+if (formLogin) {
+  formLogin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('#login-email')?.value.trim();
+    const password = $('#login-password')?.value;
+    if (!email || !password) return showToast('Completa correo y contraseña.');
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || 'No se pudo iniciar sesión.');
+      setAuthToken(j.token);
+      updateAuthUI(j.user);
+      closeAuthModal();
+      showToast('¡Bienvenido!');
+    } catch (err) {
+      showToast(err.message || 'Error de login.');
+    }
+  });
+}
+
+// Signup (envía correo de bienvenida desde el servidor)
+if (formSignup) {
+  formSignup.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('#signup-name')?.value.trim();
+    const email = $('#signup-email')?.value.trim();
+    const password = $('#signup-password')?.value;
+    const marketingOptIn = $('#signup-optin')?.checked ?? true;
+    if (!email || !password) return showToast('Correo y contraseña son requeridos.');
+    if (!EMAIL_RE.test(email)) return showToast('Correo inválido.');
+    if (String(password).length < 6) return showToast('Mínimo 6 caracteres.');
+
+    try {
+      const r = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name, password, marketingOptIn }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message || 'No se pudo registrar.');
+      setAuthToken(j.token);
+      updateAuthUI(j.user);               // << mostrará "Hola, {nombre}"
+      closeAuthModal();
+      showToast('Cuenta creada. ¡Bienvenido!');
+    } catch (err) {
+      showToast(err.message || 'Error al crear cuenta.');
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// [AUTH RESET FRONT] Soporte para reset-password.html
+// (maneja el formulario de restablecimiento si esta página lo incluye)
+// ─────────────────────────────────────────────────────────────
+(function initResetPasswordPage() {
+  // Detecta si estamos en reset-password.html por path o por existencia de formulario.
+  const isResetPath = /\/reset-password\.html$/i.test(window.location.pathname);
+  const resetForm = document.getElementById('reset-password-form') || document.getElementById('rp-form');
+  if (!isResetPath && !resetForm) return;
+
+  // Campos típicos (usa lo que exista)
+  const emailInput = document.getElementById('rp-email') || document.getElementById('reset-email');
+  const pass1Input = document.getElementById('rp-password') || document.getElementById('reset-password');
+  const pass2Input = document.getElementById('rp-password-2') || document.getElementById('reset-password-2');
+
+  // Lee token/email de la URL
+  const params = new URLSearchParams(window.location.search);
+  const tokenFromUrl = params.get('token') || '';
+  const emailFromUrl = params.get('email') || '';
+
+  if (emailInput && emailFromUrl) emailInput.value = emailFromUrl;
+
+  if (resetForm) {
+    resetForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = (emailInput?.value || '').trim();
+      const p1 = pass1Input?.value || '';
+      const p2 = pass2Input?.value || '';
+
+      if (!EMAIL_RE.test(email)) return showToast('Correo inválido.');
+      if (!tokenFromUrl) return showToast('Token no encontrado en el enlace.');
+      if (p1.length < 6) return showToast('La nueva contraseña debe tener al menos 6 caracteres.');
+      if (p1 !== p2) return showToast('Las contraseñas no coinciden.');
+
+      try {
+        const r = await fetch('/api/auth/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, token: tokenFromUrl, newPassword: p1 }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.message || 'No se pudo actualizar la contraseña.');
+        showToast('Contraseña actualizada. Ya puedes iniciar sesión.');
+        setTimeout(() => { window.location.href = '/'; }, 1200);
+      } catch (err) {
+        showToast(err.message || 'Error al restablecer contraseña.');
+      }
+    });
+  }
+})();
+
+// ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   cargarCarrito();
+
+  // [AUTH NEW] cargar sesión si hay token
+  try {
+    const token = getAuthToken();
+    if (token) {
+      const r = await fetchAuth('/api/auth/me');
+      const j = await r.json();
+      if (r.ok && j?.success) {
+        updateAuthUI(j.user);
+      } else {
+        setAuthToken(null);
+        updateAuthUI(null);
+      }
+    } else {
+      updateAuthUI(null);
+    }
+  } catch (_) {
+    updateAuthUI(null);
+  }
 
   await renderizarProductos();
   renderizarCarrito();
