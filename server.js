@@ -20,12 +20,19 @@ const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const stripe = require('stripe')(STRIPE_SECRET_KEY);
 
+// 🔐 reCAPTCHA
+const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '';
+const RECAPTCHA_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE ?? 0.5);
+
 // Modelos
 const Product = require('./models/Product');
 const Order = require('./models/Order');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+
+// Si estás detrás de un proxy (ngrok, render, nginx) esto permite leer req.ip real
+app.set('trust proxy', true);
 
 // ─────────────────────────────────────────────────────────────
 // 2) Validación temprana de variables de entorno críticas
@@ -239,7 +246,6 @@ async function descontarStockSeguro(carrito) {
   let ok = 0;
 
   for (const item of carrito) {
-    // normaliza cantidad
     const qty = Math.max(1, Math.floor(Number(item.cantidad || 0)));
     const raw = item?.id ?? item?._id ?? item?.productKey;
 
@@ -248,7 +254,6 @@ async function descontarStockSeguro(carrito) {
       continue;
     }
 
-    // coincide por id numérico o por _id
     const matchOr = [];
     const asNum = Number(raw);
     if (Number.isFinite(asNum) && String(asNum) === String(raw)) {
@@ -262,7 +267,6 @@ async function descontarStockSeguro(carrito) {
       continue;
     }
 
-    // lee el producto
     const prod = await Product.findOne({ $or: matchOr }).select('id _id nombre stock');
     if (!prod) {
       console.warn('[Stock] Producto no encontrado para', raw, '(item:', item, ')');
@@ -274,7 +278,6 @@ async function descontarStockSeguro(carrito) {
       continue;
     }
 
-    // aplica el descuento
     const updated = await Product.findOneAndUpdate(
       { $or: matchOr, stock: { $gte: qty } },
       { $inc: { stock: -qty } },
@@ -294,6 +297,48 @@ async function descontarStockSeguro(carrito) {
     throw new Error('No se pudo descontar el stock de todos los productos (posible falta de stock o ID inválido).');
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 5.1) Helper reCAPTCHA (usa fetch nativo o node-fetch dinámico)
+// ─────────────────────────────────────────────────────────────
+const _fetch = (typeof fetch !== 'undefined')
+  ? fetch
+  : (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+
+async function verifyRecaptcha(token, remoteip = undefined) {
+  if (!token || !RECAPTCHA_SECRET_KEY) {
+    return { success: false, score: 0, action: null, error: 'missing_token_or_secret' };
+  }
+  const params = new URLSearchParams();
+  params.append('secret', RECAPTCHA_SECRET_KEY);
+  params.append('response', token);
+  if (remoteip) params.append('remoteip', remoteip);
+
+  try {
+    const resp = await _fetch('https://www.google.com/recaptcha/api/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await resp.json();
+    return {
+      success: !!data.success,
+      score: Number(data.score ?? 0),
+      action: data.action || null,
+      errorCodes: data['error-codes'] || [],
+    };
+  } catch (e) {
+    console.error('reCAPTCHA verify error:', e.message);
+    return { success: false, score: 0, action: null, error: e.message };
+  }
+}
+
+// (Opcional) Ruta de debug para probar un token manualmente (usar con POST: {token})
+app.post('/api/debug-recaptcha', express.json(), async (req, res) => {
+  const token = req.body?.token;
+  const result = await verifyRecaptcha(token, req.ip);
+  res.json(result);
+});
 
 // ─────────────────────────────────────────────────────────────
 // 6) ⚠️ WEBHOOK DE STRIPE (debe ir ANTES de los body-parsers)
@@ -335,7 +380,6 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
         const orden = await Order.findOne({ orderId });
         if (!orden) break;
 
-        // Idempotencia
         if (orden.status === 'PAGADO' || orden.stockDeducted === true) {
           console.log(`ℹ️ Orden ${orderId} ya procesada como PAGADO. Saltando...`);
           break;
@@ -366,7 +410,7 @@ app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (re
       case 'payment_intent.payment_failed': {
         console.log('❌ payment_intent.payment_failed');
         const pi = event.data.object;
-        theOrderId = pi.metadata?.order_id;
+        const theOrderId = pi.metadata?.order_id;
         if (theOrderId) {
           await Order.findOneAndUpdate(
             { orderId: theOrderId, status: { $ne: 'PAGADO' } },
@@ -417,11 +461,31 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Crear PaymentIntent + Orden (con correo inicial de registro)
+// Crear PaymentIntent + Orden (con correo inicial de registro) + reCAPTCHA
 app.post('/api/create-payment-intent', async (req, res) => {
-  const { carrito, cliente, total } = req.body;
+  const { carrito, cliente, total, recaptchaToken } = req.body;
+
+  // 🔐 1) Verificar reCAPTCHA
   try {
-    console.log('[DEBUG] Carrito recibido:', carrito); // ayuda para verificar IDs
+    const result = await verifyRecaptcha(recaptchaToken, req.ip);
+    console.log('[reCAPTCHA] success:', result.success, 'score:', result.score, 'action:', result.action, 'ip:', req.ip);
+    if (!result.success || result.score < RECAPTCHA_MIN_SCORE) {
+      return res.status(400).json({
+        success: false,
+        message: 'Verificación reCAPTCHA fallida. Por favor recarga e inténtalo de nuevo.',
+      });
+    }
+  } catch (recErr) {
+    console.error('❌ Error verificando reCAPTCHA:', recErr.message);
+    return res.status(400).json({
+      success: false,
+      message: 'No se pudo verificar reCAPTCHA.',
+    });
+  }
+
+  // 2) Lógica de negocio (igual que antes)
+  try {
+    console.log('[DEBUG] Carrito recibido:', carrito);
     const check = await validarYCalcularTotal(carrito);
     if (!check.ok) return res.status(400).json({ success: false, message: check.message });
 

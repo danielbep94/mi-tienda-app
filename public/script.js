@@ -29,6 +29,28 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const btnIniciarPago = document.getElementById('btn-iniciar-pago');
 const paymentContainer = document.getElementById('payment-element-container');
 
+// ─────────────────────────────────────────────────────────────
+// reCAPTCHA v3 helper
+// ─────────────────────────────────────────────────────────────
+async function getRecaptchaToken(action = 'checkout') {
+  return new Promise((resolve) => {
+    try {
+      if (!window.grecaptcha || !window.RECAPTCHA_SITE_KEY) {
+        resolve(null);
+        return;
+      }
+      window.grecaptcha.ready(() => {
+        window.grecaptcha
+          .execute(window.RECAPTCHA_SITE_KEY, { action })
+          .then((token) => resolve(token))
+          .catch(() => resolve(null));
+      });
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
 // Persistencia ligera
 function guardarCarrito() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CARRITO)); } catch (_) {}
@@ -54,7 +76,6 @@ function renderizarCarrito() {
     cont.innerHTML = '<li>El carrito está vacío.</li>';
     totalEl.textContent = '0.00';
     guardarCarrito();
-    // Oculta UI de pago si estaba visible
     if (paymentContainer) paymentContainer.style.display = 'none';
     if (btnIniciarPago) btnIniciarPago.style.display = '';
     return;
@@ -82,7 +103,6 @@ function renderizarCarrito() {
 
   totalEl.textContent = fmt(total);
 
-  // Eventos: cambio de cantidad
   $$('.carrito-cantidad').forEach((inp) => {
     inp.addEventListener('input', () => {
       const idx = Number(inp.dataset.idx);
@@ -93,7 +113,6 @@ function renderizarCarrito() {
     });
   });
 
-  // Eventos: eliminar
   $$('.btn-eliminar').forEach((btn) => {
     btn.addEventListener('click', () => {
       const idx = Number(btn.dataset.idx);
@@ -119,7 +138,6 @@ function agregarAlCarrito(prod) {
 // Render de productos (Lectura de MongoDB) con fallback
 // ─────────────────────────────────────────────────────────────
 async function fetchProductosConFallback() {
-  // Primero intenta ruta relativa; si falla, intenta localhost
   try {
     const r1 = await fetch('/api/products', { credentials: 'same-origin' });
     if (r1.ok) return r1.json();
@@ -138,7 +156,6 @@ async function renderizarProductos() {
 
   try {
     const productos = await fetchProductosConFallback();
-    // Normaliza: preferimos id numérico si existe; si no, usamos _id string.
     inventarioLocal = Array.isArray(productos)
       ? productos.map(p => ({
           id: (p.id != null ? Number(p.id) : (p._id || String(p._id))),
@@ -183,12 +200,11 @@ async function renderizarProductos() {
     $$('.btn-agregar').forEach((btn) => {
       btn.addEventListener('click', () => {
         const raw = btn.dataset.id;
-        // si es número válido, úsalo; si no, deja string (ObjectId)
         const id = Number.isFinite(Number(raw)) && String(Number(raw)) === String(raw) ? Number(raw) : String(raw);
         const prod = inventarioLocal.find((x) => String(x.id) === String(id));
         if (prod) {
           agregarAlCarrito({
-            id, // puede ser Number o string (ObjectId)
+            id,
             nombre: prod.nombre,
             precio: Number(prod.precio)
           });
@@ -204,120 +220,116 @@ async function renderizarProductos() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FLUJO DE PAGO Y ORDEN (CORREGIDO + MEJORAS)
+// FLUJO DE PAGO Y ORDEN (CORREGIDO + MEJORAS + reCAPTCHA)
 // ─────────────────────────────────────────────────────────────
 async function iniciarFlujoDePago(e) {
-  e.preventDefault(); 
+  e.preventDefault();
 
   if (CARRITO.length === 0) return alert('Tu carrito está vacío.');
-  
-  // 1. Obtener y validar datos del cliente
+
   const nombre = nombreClienteInput.value.trim();
   const email  = emailClienteInput.value.trim();
   const fecha  = fechaRecoleccionInput.value;
   const hora   = horaRecoleccionInput.value;
-  
+
   if (!nombre || !email || !fecha || !hora) {
-      return alert('Completa todos los campos de detalles de recolección.');
+    return alert('Completa todos los campos de detalles de recolección.');
   }
   if (!EMAIL_RE.test(email)) {
-      return alert('Ingresa un correo electrónico válido.');
+    return alert('Ingresa un correo electrónico válido.');
   }
-  
+
   const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
 
   try {
-      // Evita crear múltiples botones/elementos si el usuario re-clickea
-      if (paymentContainer) {
-        paymentContainer.innerHTML = '';
-        paymentContainer.style.display = 'block';
-      }
-      if (btnIniciarPago) btnIniciarPago.style.display = 'none';
+    if (paymentContainer) {
+      paymentContainer.innerHTML = '';
+      paymentContainer.style.display = 'block';
+    }
+    if (btnIniciarPago) btnIniciarPago.style.display = 'none';
 
-      // 2. Llamar al backend para crear el Payment Intent y guardar orden PENDIENTE
-      const response = await fetch('/api/create-payment-intent', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-              carrito: CARRITO.map(({ id, nombre, precio, cantidad }) => ({ id, nombre, precio, cantidad })),
-              cliente: { nombre, email, fecha, hora },
-              total: total.toFixed(2)
-          }),
-      });
+    // 🔐 Obtener token reCAPTCHA v3
+    const recaptchaToken = await getRecaptchaToken('create_payment_intent');
+    console.log('[reCAPTCHA] token prefix:', recaptchaToken ? recaptchaToken.slice(0, 18) + '…' : '(sin token)');
+    const recaptchaInput = document.getElementById('recaptcha_token');
+    if (recaptchaInput) recaptchaInput.value = recaptchaToken || '';
 
-      const json = await response.json();
-      if (!json.success) throw new Error(json.message || 'No se pudo iniciar el pago.');
-      
-      // 3. Montar el formulario de Stripe con el clientSecret
-      const appearance = { theme: 'stripe' };
-      elements = stripe.elements({ appearance, clientSecret: json.clientSecret });
+    // 2) Crear PaymentIntent en backend
+    const response = await fetch('/api/create-payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        carrito: CARRITO.map(({ id, nombre, precio, cantidad }) => ({ id, nombre, precio, cantidad })),
+        cliente: { nombre, email, fecha, hora },
+        total: total.toFixed(2),
+        recaptchaToken
+      }),
+    });
 
-      const paymentElement = elements.create("payment", { layout: 'tabs' });
-      paymentElement.mount(paymentContainer);
-      
-      // 4. Inyectar el botón de pago y configurar el Listener
-      const btnPagar = document.createElement('button');
-      btnPagar.id = 'btn-pagar';
-      btnPagar.textContent = `Pagar $${total.toFixed(2)}`;
-      btnPagar.style.cssText = 'width: 100%; padding: 10px; margin-top: 15px; background-color: #6772e5; color: white; border: none; border-radius: 6px; cursor: pointer;';
-      
-      paymentContainer.appendChild(btnPagar);
+    const json = await response.json();
+    if (!json.success) throw new Error(json.message || 'No se pudo iniciar el pago.');
 
-      // 5. Asignar la función final al nuevo botón
-      btnPagar.addEventListener('click', procesarPagoFinal);
+    // 3) Stripe Elements
+    const appearance = { theme: 'stripe' };
+    elements = stripe.elements({ appearance, clientSecret: json.clientSecret });
+
+    const paymentElement = elements.create('payment', { layout: 'tabs' });
+    paymentElement.mount(paymentContainer);
+
+    // 4) Botón "Pagar"
+    const btnPagar = document.createElement('button');
+    btnPagar.id = 'btn-pagar';
+    btnPagar.textContent = `Pagar $${total.toFixed(2)}`;
+    btnPagar.style.cssText = 'width: 100%; padding: 10px; margin-top: 15px; background-color: #6772e5; color: white; border: none; border-radius: 6px; cursor: pointer;';
+    paymentContainer.appendChild(btnPagar);
+    btnPagar.addEventListener('click', procesarPagoFinal);
 
   } catch (err) {
-      console.error('Error al iniciar el pago:', err);
-      alert(`Error al iniciar el pago: ${err.message}. Revisa tu conexión o intenta de nuevo.`);
-      if (paymentContainer) paymentContainer.style.display = 'none';
-      if (btnIniciarPago) btnIniciarPago.style.display = '';
+    console.error('Error al iniciar el pago:', err);
+    alert(`Error al iniciar el pago: ${err.message}. Revisa tu conexión o intenta de nuevo.`);
+    if (paymentContainer) paymentContainer.style.display = 'none';
+    if (btnIniciarPago) btnIniciarPago.style.display = '';
   }
 }
 
 async function procesarPagoFinal() {
   try {
-      const btnPagar = document.getElementById('btn-pagar');
+    const btnPagar = document.getElementById('btn-pagar');
+    if (btnPagar) {
+      btnPagar.disabled = true;
+      btnPagar.textContent = 'Procesando…';
+    }
+
+    const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`
+      },
+      redirect: 'if_required',
+    });
+
+    if (error) {
+      alert(error.message || 'No se pudo confirmar el pago. Verifica tus datos.');
       if (btnPagar) {
-          btnPagar.disabled = true;
-          btnPagar.textContent = 'Procesando…';
+        btnPagar.disabled = false;
+        btnPagar.textContent = 'Fallo al Pagar (Reintentar)';
       }
+      return;
+    }
 
-      // 1. Confirmar el pago con la URL de redirección
-      const total = CARRITO.reduce((acc, it) => acc + (Number(it.precio) * Number(it.cantidad)), 0);
-
-      const { error, paymentIntent } = await stripe.confirmPayment({
-          elements,
-          confirmParams: {
-              // Esta URL es crítica para forzar la finalización del flujo de Stripe.
-              return_url: `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`,
-          },
-          redirect: 'if_required', 
-      });
-
-      // 2. Manejo de errores de confirmación de Stripe
-      if (error) {
-          alert(error.message || 'No se pudo confirmar el pago. Verifica tus datos.');
-          if (btnPagar) {
-              btnPagar.disabled = false;
-              btnPagar.textContent = 'Fallo al Pagar (Reintentar)'; // Mensaje de fallo claro
-          }
-          return;
-      }
-      
-      // 3. (CASO EXCEPCIONAL) Si Stripe NO redirige, pero el pago es exitoso (raro),
-      // notificamos el éxito aquí como fallback.
-      if (paymentIntent && paymentIntent.status === 'succeeded') {
-           alert('✅ Pago Exitoso. Redirigiendo para confirmación final.');
-           window.location.href = `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`;
-      }
-
+    if (paymentIntent && paymentIntent.status === 'succeeded') {
+      alert('✅ Pago Exitoso. Redirigiendo para confirmación final.');
+      window.location.href = `${window.location.origin}${window.location.pathname}?payment_success=true&total_paid=${total.toFixed(2)}`;
+    }
   } catch (err) {
-      console.error('Error en confirmación de pago:', err);
-      alert('Ocurrió un error al confirmar el pago.');
+    console.error('Error en confirmación de pago:', err);
+    alert('Ocurrió un error al confirmar el pago.');
   }
 }
 
-// WhatsApp: usa el número incrustado en data-phone del botón o un fallback
+// WhatsApp
 function enviarPedidoWhatsapp() {
   if (CARRITO.length === 0) return alert('Tu carrito está vacío.');
 
@@ -335,40 +347,28 @@ function enviarPedidoWhatsapp() {
     `Nombre: ${nombre || 'N/D'}\n` +
     `Recolección: ${fecha || 'N/D'} a las ${hora || 'N/D'}`;
 
-  const phone = btnWhatsapp?.dataset?.phone || '0000000000'; // <-- coloca aquí tu número si prefieres
+  const phone = btnWhatsapp?.dataset?.phone || '0000000000';
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 // ─────────────────────────────────────────────────────────────
-// Inicio y Listeners
-// ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  // Carga carrito persistido (si lo hay)
   cargarCarrito();
 
-  // Render inicial
   await renderizarProductos();
   renderizarCarrito();
 
-  // Listeners
   if (formOrden) formOrden.addEventListener('submit', iniciarFlujoDePago);
   if (btnWhatsapp) btnWhatsapp.addEventListener('click', enviarPedidoWhatsapp);
 
-  // Manejo de retorno (Stripe return_url)
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('payment_success') === 'true') {
-      const totalPaid = urlParams.get('total_paid');
-      
-      // El mensaje final que el usuario ve
-      alert(`🎉 ¡Pago COMPLETADO con éxito!${totalPaid ? ` Importe: $${totalPaid}.` : ''} El vendedor procesará la orden y recibirás un correo final.`);
-      
-      // Limpia carrito y UI
-      CARRITO = [];
-      guardarCarrito();
-      renderizarCarrito();
-      
-      // Limpia query params
-      history.replaceState(null, '', window.location.pathname);
+    const totalPaid = urlParams.get('total_paid');
+    alert(`🎉 ¡Pago COMPLETADO con éxito!${totalPaid ? ` Importe: $${totalPaid}.` : ''} El vendedor procesará la orden y recibirás un correo final.`);
+    CARRITO = [];
+    guardarCarrito();
+    renderizarCarrito();
+    history.replaceState(null, '', window.location.pathname);
   }
 });

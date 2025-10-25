@@ -8,6 +8,14 @@
   <!-- Stripe -->
   <script src="https://js.stripe.com/v3/"></script>
 
+  <!-- reCAPTCHA v3: define tu SITE KEY y carga la librería -->
+  <script>
+    // ⚠️ Usa EXACTAMENTE la clave del sitio de esta key v3 (no la secreta)
+    window.RECAPTCHA_SITE_KEY = '6LeHu_YrAAAAAE9ViEhbkMXR8nWVdllAOseAuSFz';
+  </script>
+  <!-- Sugerencia: evita 'render=explicit'; usa v3 por dominio y ejecuta con execute(key, {action}) -->
+  <script src="https://www.google.com/recaptcha/api.js?render=6LeHu_YrAAAAAE9ViEhbkMXR8nWVdllAOseAuSFz" async defer></script>
+
   <!-- Estilos -->
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -108,6 +116,9 @@
           <!-- 🔹 Stripe Payment Element -->
           <div id="payment-element-container" style="margin-top:20px; display:none;"></div>
 
+          <!-- 🔐 Token reCAPTCHA (llenado por script.js) -->
+          <input type="hidden" id="recaptcha_token" name="recaptcha_token" />
+
           <!-- Botón de pago -->
           <button type="submit" id="btn-iniciar-pago" class="btn btn-primary">
             Iniciar Pago con Tarjeta
@@ -139,11 +150,11 @@
     </p>
   </noscript>
 
-  <!-- Script principal -->
   <script>
-    // Actualiza el año del footer (no interfiere con tu script.js)
     document.getElementById('year').textContent = new Date().getFullYear();
   </script>
+
+  <!-- Script principal -->
   <script src="script.js"></script>
 </body>
 </html>
