@@ -310,133 +310,301 @@
       grid-template-columns: 1fr; /* inputs en una sola columna */
     }
   }
-
-
+  
+  
   /* =========================================================
    Admin / Panel de Vendedor
    ======================================================= */
-.admin-body{ background:#eef2f7; }
-
-.admin-nav .admin-link{
-  color:#fff; text-decoration:none; font-weight:700;
-  background:rgba(255,255,255,.18);
-  padding:8px 12px; border-radius:10px;
-  border:1px solid rgba(255,255,255,.25);
-}
-.admin-nav .admin-link:hover{ background:rgba(255,255,255,.3); }
-
-.admin-container{ padding-block:22px; }
-.admin-grid{
-  display:grid;
-  grid-template-columns: 1fr;
-  gap:18px;
-}
-
-.card{
-  background:#fff;
-  border:1px solid var(--border);
-  border-radius:14px;
-  box-shadow:var(--shadow);
-  padding:16px;
-}
-.card-head{ margin-bottom:8px; }
-.card-title{ margin:.2rem 0; font-size: clamp(1.05rem, 3.4vw, 1.3rem); }
-.card-sub{ margin:.15rem 0 0; color:#667085; }
-
-.label{
-  display:block;
-  font-weight:700;
-  font-size:.92rem;
-  color:#344054;
-  margin-top:10px;
-}
-
-.input{
-  width:100%;
-  padding:11px 12px;
-  border:1px solid #d0d5dd;
-  border-radius:12px;
-  background:#fff;
-  outline:none;
-  transition:border-color .2s ease, box-shadow .2s ease;
-}
-.input:focus{
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(0,123,255,.12);
-}
-
-.actions{
-  display:flex; gap:10px; align-items:center; margin-top:8px;
-}
-.actions .btn{ width:auto; }
-
-.order-detail{
-  margin-top:14px; padding:14px; border:1px dashed var(--primary); background:#f0f8ff; border-radius:12px;
-}
-.detail-row{ margin:6px 0; display:flex; gap:8px; align-items:center; }
-
-/* Botones */
-.btn{
-  display:inline-flex; align-items:center; justify-content:center;
-  gap:8px; padding:11px 14px; border-radius:12px; border:none;
-  font-weight:800; cursor:pointer;
-  transition: transform .06s ease, box-shadow .15s ease, background .2s ease, opacity .2s ease;
-}
-.btn:active{ transform: translateY(1px); }
-
-.btn-primary{ background:var(--primary); color:#fff; width:100%; margin-top:12px; }
-.btn-primary:hover{ background:var(--primary-600); }
-.btn-warn{ background:var(--warning); color:#222; }
-.btn-warn:hover{ opacity:.9; }
-.btn-success{ background:#28a745; color:#fff; width:100%; margin-top:12px; }
-.btn-success:hover{ background:#218838; }
-
-/* Mensajes / Alertas */
-.alert{
-  margin-top:12px; padding:10px 12px; border-radius:10px;
-  background:#f8fafc; border:1px solid #e5e7eb; color:#344054;
-}
-
-/* Tabla responsive */
-.table-wrap{ overflow:auto; border:1px solid #eef2f7; border-radius:12px; }
-.table{
-  width:100%; border-collapse: collapse; background:#fff;
-  min-width: 720px; /* permite scroll en móviles si hay muchas columnas */
-}
-.table th, .table td{
-  padding:12px; border-bottom:1px solid #f1f3f5; text-align:left; font-size:.93rem;
-}
-.table thead th{
-  position:sticky; top:0; z-index:1;
-  background:#f8fafc; color:#475467; font-weight:800; border-bottom:1px solid #eaecef;
-}
-
-/* Badges de estatus */
-.status-badge{
-  display:inline-block; padding:4px 10px; border-radius:999px; font-size:.82rem; font-weight:800; color:#fff;
-  background:#64748b;
-}
-.badge-pendiente{ background:#a16207; }        /* PENDIENTE DE PAGO */
-.badge-proceso{ background:#0ea5e9; }          /* EN PROCESO */
-.badge-listo{ background:#16a34a; }            /* LISTO PARA RECOGER */
-.badge-completado{ background:#0f766e; }       /* COMPLETADO */
-.badge-cancelado{ background:#ef4444; }        /* CANCELADO */
-
-/* Form catálogo */
-.catalog-form{ display:flex; flex-direction:column; gap:10px; }
-
-/* Responsivo */
-@media (min-width: 992px){
+  .admin-body{ background:#eef2f7; }
+  
+  .admin-nav .admin-link{
+    color:#fff; text-decoration:none; font-weight:700;
+    background:rgba(255,255,255,.18);
+    padding:8px 12px; border-radius:10px;
+    border:1px solid rgba(255,255,255,.25);
+  }
+  .admin-nav .admin-link:hover{ background:rgba(255,255,255,.3); }
+  
+  .admin-container{ padding-block:22px; }
   .admin-grid{
-    grid-template-columns: 1fr 1fr;
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:18px;
   }
-  /* la tabla ocupa todo el ancho en una fila */
-  .admin-grid .card:nth-child(2){
-    grid-column: 1 / -1;
+  
+  .card{
+    background:#fff;
+    border:1px solid var(--border);
+    border-radius:14px;
+    box-shadow:var(--shadow);
+    padding:16px;
   }
-}
-
-@media (max-width: 560px){
-  .actions{ flex-direction:column; align-items:stretch; }
-  .actions .btn{ width:100%; }
-}
+  .card-head{ margin-bottom:8px; }
+  .card-title{ margin:.2rem 0; font-size: clamp(1.05rem, 3.4vw, 1.3rem); }
+  .card-sub{ margin:.15rem 0 0; color:#667085; }
+  
+  .label{
+    display:block;
+    font-weight:700;
+    font-size:.92rem;
+    color:#344054;
+    margin-top:10px;
+  }
+  
+  .input{
+    width:100%;
+    padding:11px 12px;
+    border:1px solid #d0d5dd;
+    border-radius:12px;
+    background:#fff;
+    outline:none;
+    transition:border-color .2s ease, box-shadow .2s ease;
+  }
+  .input:focus{
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0,123,255,.12);
+  }
+  
+  .actions{
+    display:flex; gap:10px; align-items:center; margin-top:8px;
+  }
+  .actions .btn{ width:auto; }
+  
+  .order-detail{
+    margin-top:14px; padding:14px; border:1px dashed var(--primary); background:#f0f8ff; border-radius:12px;
+  }
+  .detail-row{ margin:6px 0; display:flex; gap:8px; align-items:center; }
+  
+  /* Botones */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center;
+    gap:8px; padding:11px 14px; border-radius:12px; border:none;
+    font-weight:800; cursor:pointer;
+    transition: transform .06s ease, box-shadow .15s ease, background .2s ease, opacity .2s ease;
+  }
+  .btn:active{ transform: translateY(1px); }
+  
+  .btn-primary{ background:var(--primary); color:#fff; width:100%; margin-top:12px; }
+  .btn-primary:hover{ background:var(--primary-600); }
+  .btn-warn{ background:var(--warning); color:#222; }
+  .btn-warn:hover{ opacity:.9; }
+  .btn-success{ background:#28a745; color:#fff; width:100%; margin-top:12px; }
+  .btn-success:hover{ background:#218838; }
+  
+  /* Mensajes / Alertas */
+  .alert{
+    margin-top:12px; padding:10px 12px; border-radius:10px;
+    background:#f8fafc; border:1px solid #e5e7eb; color:#344054;
+  }
+  
+  /* Tabla responsive */
+  .table-wrap{ overflow:auto; border:1px solid #eef2f7; border-radius:12px; }
+  .table{
+    width:100%; border-collapse: collapse; background:#fff;
+    min-width: 720px; /* permite scroll en móviles si hay muchas columnas */
+  }
+  .table th, .table td{
+    padding:12px; border-bottom:1px solid #f1f3f5; text-align:left; font-size:.93rem;
+  }
+  .table thead th{
+    position:sticky; top:0; z-index:1;
+    background:#f8fafc; color:#475467; font-weight:800; border-bottom:1px solid #eaecef;
+  }
+  
+  /* Badges de estatus */
+  .status-badge{
+    display:inline-block; padding:4px 10px; border-radius:999px; font-size:.82rem; font-weight:800; color:#fff;
+    background:#64748b;
+  }
+  .badge-pendiente{ background:#a16207; }        /* PENDIENTE DE PAGO */
+  .badge-proceso{ background:#0ea5e9; }          /* EN PROCESO */
+  .badge-listo{ background:#16a34a; }            /* LISTO PARA RECOGER */
+  .badge-completado{ background:#0f766e; }       /* COMPLETADO */
+  .badge-cancelado{ background:#ef4444; }        /* CANCELADO */
+  
+  /* Form catálogo */
+  .catalog-form{ display:flex; flex-direction:column; gap:10px; }
+  
+  /* Responsivo */
+  @media (min-width: 992px){
+    .admin-grid{
+      grid-template-columns: 1fr 1fr;
+    }
+    /* la tabla ocupa todo el ancho en una fila */
+    .admin-grid .card:nth-child(2){
+      grid-column: 1 / -1;
+    }
+  }
+  
+  @media (max-width: 560px){
+    .actions{ flex-direction:column; align-items:stretch; }
+    .actions .btn{ width:100%; }
+  }
+  
+  /* =========================================================
+     [STORE CONFIG] Social strip + contact line
+     (added styles; no existing rules modified)
+     ======================================================= */
+  
+  /* Container that script.js builds inside the header */
+  #social-strip{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+    padding:6px 0 10px;
+  }
+  
+  /* Button-like social links (Instagram/Facebook/TikTok…) */
+  .social-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    background:rgba(255,255,255,.18);             /* readable over header gradient */
+    border:1px solid rgba(255,255,255,.25);
+    color:#ffffff;
+    text-decoration:none;
+    font-weight:800;
+    line-height:1;
+    transition: background .2s ease, transform .06s ease, box-shadow .15s ease;
+  }
+  .social-pill:hover{ background:rgba(255,255,255,.30); }
+  .social-pill:active{ transform: translateY(1px); }
+  .social-pill:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+  .social-pill svg{ width:16px; height:16px; display:block; }
+  
+  /* Generic line for address / light contact text blocks */
+  .contact-line{
+    margin-top:10px;
+    color:#475569;
+    font-size:.95rem;
+  }
+  .contact-line a{
+    color:#2563eb;               /* consistent with site accent */
+    text-decoration:underline;
+  }
+  
+  /* =========================================================
+     [BRAND PATCH] Social icons with SVGs  ⬇⬇ (NEW)
+     ======================================================= */
+  .social-bar a { color:#2563eb; font-weight:600; text-decoration:none; }
+  .social-icon {
+    width:16px; height:16px; display:inline-block; background-size:contain; background-repeat:no-repeat;
+    background-color:transparent; border-radius:0;
+  }
+  #social-instagram .social-icon, #footer-instagram .social-icon { background-image:url('/img/instagram.svg'); }
+  #social-facebook .social-icon,  #footer-facebook .social-icon  { background-image:url('/img/facebook.svg');  }
+  #social-tiktok .social-icon,     #footer-tiktok .social-icon     { background-image:url('/img/tiktok.svg');   }
+  
+  /* =========================================================
+     [THEME UPLIFT] Harmonize palette with header + better contrast
+     (non-destructive: overrides come later in the cascade)
+     ======================================================= */
+  :root{
+    /* Blues aligned with header gradient used in index.html meta */
+    --primary: #2563eb;          /* Tailwind-ish blue-600 */
+    --primary-600: #1e4fd6;
+    --success: #22c55e;          /* fresher green for CTAs */
+    --success-600: #16a34a;
+  }
+  
+  /* Header social links should be light over blue gradient */
+  .site-header .social-bar a{ color:#eaf0ff; opacity:.95; }
+  .site-header .social-bar a:hover{ opacity:1; text-decoration:underline; }
+  
+  /* Buttons focus/hover polish */
+  .btn, .producto-card button, .whatsapp-btn, .btn-primary{
+    box-shadow: 0 0 0 0 rgba(37,99,235,0);
+  }
+  .btn:focus-visible,
+  .producto-card button:focus-visible,
+  .whatsapp-btn:focus-visible,
+  .btn-primary:focus-visible{
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(37,99,235,.18);
+  }
+  
+  /* Inputs consistent focus with new primary */
+  .order-form input:focus,
+  .input:focus{
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(37,99,235,.18);
+  }
+  
+  /* Product headings match brand, slightly deeper */
+  .producto-card h3{
+    color: var(--primary);
+    letter-spacing:.2px;
+  }
+  
+  /* Card hover lift + shadow unified */
+  .producto-card:hover{
+    box-shadow: 0 10px 24px rgba(2,8,23,.12);
+  }
+  
+  /* =========================================================
+     [HEADER POLISH] Gradient consistent across files
+     ======================================================= */
+  .site-header{
+    background: linear-gradient(135deg, var(--primary) 0%, #60a5fa 100%);
+  }
+  
+  /* =========================================================
+     [SOCIAL LINK ALIGNMENT] Style for script.js "social-link"
+     (You already had .social-pill; this targets .social-link too)
+     ======================================================= */
+  .social-link{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    background:rgba(255,255,255,.18);
+    border:1px solid rgba(255,255,255,.25);
+    color:#ffffff;
+    text-decoration:none;
+    font-weight:800;
+    line-height:1;
+    transition: background .2s ease, transform .06s ease, box-shadow .15s ease;
+  }
+  .social-link:hover{ background:rgba(255,255,255,.30); }
+  .social-link:active{ transform: translateY(1px); }
+  .social-link:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+  .social-link .social-icon{ width:16px; height:16px; display:inline-flex; }
+  
+  /* =========================================================
+     [STORE PAGE RULE] Hide Teléfono/WhatsApp links but keep address
+     (works with body[data-page="store"])
+     ======================================================= */
+  body[data-page="store"] #contact-phone,
+  body[data-page="store"] #footer-phone,
+  body[data-page="store"] #contact-whatsapp,
+  body[data-page="store"] #footer-whatsapp{
+    display:none !important;
+  }
+  
+  /* =========================================================
+     [CARD POLISH] subtle radius & shadow unification
+     ======================================================= */
+  #productos,
+  .cart-card,
+  .card{
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  
+  /* =========================================================
+     [ACCESSIBILITY] Larger hit-areas for small controls
+     ======================================================= */
+  .btn, .producto-card button, .whatsapp-btn{
+    min-height: 44px; /* recommended touch target */
+  }
+  
+  /* =========================================================
+     [MOBILE TWEAK] More spacing under header bar
+     ======================================================= */
+  @media (max-width: 840px){
+    .site-header .container{ padding-bottom: 8px; }
+  }

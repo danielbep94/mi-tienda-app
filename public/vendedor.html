@@ -10,8 +10,32 @@
 
   <header class="site-header">
     <div class="container header-inner">
-      <h1 class="brand">⚙️ Panel de Gestión de Órdenes</h1>
-      <nav class="admin-nav">
+      <!-- [BRAND CONFIG NEW]  Logo + nombre + emoji (se llenan desde store-config.json) -->
+      <h1 class="brand" style="display:flex; align-items:center; gap:10px;">
+        <img id="brand-logo" alt="Logo" />
+        <span id="brand-emoji" aria-hidden="true">⚙️</span>
+        <span>
+          <span id="brand-name">Panel de Gestión de Órdenes</span>
+        </span>
+      </h1>
+
+      <nav class="admin-nav" style="display:flex; gap:10px; align-items:center;">
+        <!-- [BRAND CONFIG PATCH] social bar:
+             - Cambié IDs a los mismos del storefront (#social-instagram/#social-facebook/#social-tiktok)
+               para que tomen los SVGs definidos en styles.css
+             - Se ocultan por defecto; se muestran si hay URL en la config -->
+        <div class="social-bar" id="social-bar" style="display:none;">
+          <a id="social-instagram" class="social-pill" href="#" target="_blank" rel="noopener" style="display:none">
+            <span class="social-icon" aria-hidden="true"></span> Instagram
+          </a>
+          <a id="social-facebook" class="social-pill" href="#" target="_blank" rel="noopener" style="display:none">
+            <span class="social-icon" aria-hidden="true"></span> Facebook
+          </a>
+          <a id="social-tiktok" class="social-pill" href="#" target="_blank" rel="noopener" style="display:none">
+            <span class="social-icon" aria-hidden="true"></span> TikTok
+          </a>
+        </div>
+
         <a class="admin-link" href="/">← Ir a la tienda</a>
       </nav>
     </div>
@@ -104,13 +128,96 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>© <span id="year"></span> Mi Empresa. Panel de Vendedor.</p>
+      <!-- [BRAND CONFIG NEW] línea de contacto/empresa inyectada desde JSON -->
+      <p class="contact-line" id="contact-line" style="margin-bottom:6px;"></p>
+      <p>© <span id="year"></span> <span id="footer-company">Mi Empresa</span>. Panel de Vendedor.</p>
     </div>
   </footer>
 
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ─────────────────────────────────────────────────────────
+    // [BRAND CONFIG PATCH] Carga de /config/store-config.json
+    //   Ajustado para la estructura anidada actual:
+    //   {
+    //     "company": { "name","brandEmoji","logo","address" },
+    //     "contacts": { "phone","whatsapp" },
+    //     "socials":  { "instagram","facebook","tiktok" },
+    //     "ui":       { "accentColor","cartColor" }
+    //   }
+    // ─────────────────────────────────────────────────────────
+    (async function loadBrandConfig(){
+      try{
+        const res = await fetch('/config/store-config.json', { cache: 'no-store' });
+        if(!res.ok) throw new Error('No se pudo leer store-config.json');
+        const cfg = await res.json();
+
+        // [BRAND PATCH] extrae con fallback seguros
+        const company  = cfg.company  || {};
+        const contacts = cfg.contacts || {};
+        const socials  = cfg.socials  || {};       // << antes usábamos cfg.social
+        const ui       = cfg.ui       || {};
+
+        // 1) Título y encabezado
+        const name   = company.name || 'Mi Tienda';
+        const emoji  = company.brandEmoji || '🛒';
+        const logo   = company.logo || '';
+
+        document.title = `${name} — Panel de Gestión de Órdenes`;
+
+        const nameEl  = document.getElementById('brand-name');
+        const emojiEl = document.getElementById('brand-emoji');
+        const logoEl  = document.getElementById('brand-logo');
+        const footerCompany = document.getElementById('footer-company');
+
+        if(nameEl)  nameEl.textContent  = `${name} — Panel de Gestión de Órdenes`;
+        if(emojiEl) emojiEl.textContent = emoji;
+        if(logoEl && logo){
+          logoEl.src = logo;
+          logoEl.style.display = 'inline-block';
+          logoEl.style.height = '28px';          // [BRAND PATCH] tamaño razonable
+          logoEl.style.width  = 'auto';
+        }
+        if(footerCompany) footerCompany.textContent = name;
+
+        // 2) Colores UI (accent y cart)
+        const root = document.documentElement;
+        if(ui.accentColor){
+          root.style.setProperty('--primary', ui.accentColor);     // [BRAND PATCH]
+        }
+        if(ui.cartColor){
+          root.style.setProperty('--cart-accent', ui.cartColor);    // [BRAND PATCH]
+        }
+
+        // 3) Social (usa mismos IDs del storefront para mostrar SVGs)
+        const ig = document.getElementById('social-instagram');
+        const fb = document.getElementById('social-facebook');
+        const tt = document.getElementById('social-tiktok');
+        const bar = document.getElementById('social-bar');
+
+        let hasAny = false;
+        if(ig && socials.instagram){ ig.href = socials.instagram; ig.style.display='inline-flex'; hasAny = true; }
+        if(fb && socials.facebook){  fb.href = socials.facebook;  fb.style.display='inline-flex'; hasAny = true; }
+        if(tt && socials.tiktok){    tt.href = socials.tiktok;    tt.style.display='inline-flex'; hasAny = true; }
+        if(bar && hasAny) bar.style.display = 'flex';
+
+        // 4) Línea de contacto en el footer
+        const parts = [
+          company.address ? `📍 ${company.address}` : '',
+          contacts.phone   ? `☎️ ${contacts.phone}`   : '',
+          contacts.whatsapp? `💬 WhatsApp: ${contacts.whatsapp}` : ''
+        ].filter(Boolean);
+        const contactEl = document.getElementById('contact-line');
+        if(contactEl) contactEl.textContent = parts.join(' · ');
+
+      }catch(e){
+        // Silencioso: el panel funciona igual si no hay config
+        console.warn('[brand-config] no se pudo cargar configuración de marca:', e?.message);
+      }
+    })();
   </script>
+
   <script src="vendedor.js"></script>
 </body>
 </html>

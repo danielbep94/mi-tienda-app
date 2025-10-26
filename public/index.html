@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Tienda de Productos - Mi Empresa</title>
 
+  <!-- [PERF PRECONNECT] Improve connection setup for external CDNs -->
+  <link rel="preconnect" href="https://js.stripe.com" crossorigin>
+  <link rel="preconnect" href="https://www.google.com" crossorigin>
+
   <!-- Stripe -->
   <script src="https://js.stripe.com/v3/"></script>
 
@@ -17,6 +21,38 @@
 
   <!-- Estilos -->
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- [FAVICON SAFE] If you have these files, this avoids 404s for the tab icon -->
+  <link rel="icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" href="/img/favicon.png">
+
+  <!-- [UX THEME VARS] minimal theme tokens + a softer header gradient -->
+  <meta name="theme-color" content="#2563eb">
+  <style>
+    :root{
+      --brand: #2563eb;        /* primary */
+      --brand-600:#1e4fd6;
+      --surface:#ffffff;
+      --muted:#475569;
+      --text:#0f172a;
+      --accent:#22c55e;        /* buttons success/cta */
+      --card:#ffffff;
+      --ring: rgba(37,99,235,.18);
+      --shadow: 0 6px 24px rgba(2,8,23,.06);
+    }
+    .site-header{
+      background: linear-gradient(135deg, var(--brand) 0%, #60a5fa 100%);
+      color:#fff;
+    }
+    .header-inner, .site-footer .container{ color:inherit; }
+    .social-bar a{ color:#e5edff; }
+    .social-bar a:hover{ text-decoration:underline; opacity:.9; }
+    .cart-card{ background:var(--card); box-shadow:var(--shadow); }
+    .btn-primary{ background: var(--brand); border:none; }
+    .btn-primary:hover{ background: var(--brand-600); }
+    .whatsapp-btn{ background: var(--accent); border:none; }
+    .whatsapp-btn:hover{ filter: brightness(.95); }
+  </style>
 
   <!-- [AUTH NEW] estilos mínimos del modal y barra -->
   <style>
@@ -44,13 +80,35 @@
     .auth-form .actions{margin-top:14px}
     .auth-form .actions button{width:100%;padding:10px;background:#111;color:#fff;border:none;border-radius:6px}
     .close-x{background:transparent;border:none;font-size:1.2rem;cursor:pointer}
+
+    /* ──────────────────────────────────────────────────────────
+       [BRAND NEW] mínimos estilos inline para logo/social hooks
+       (si prefieres, muévelo a styles.css con los mismos nombres)
+       ────────────────────────────────────────────────────────── */
+    .brand { display:flex; align-items:center; gap:10px; }
+    #brand-logo { height:28px; width:auto; display:none; } /* se muestra si hay src en config */
+    #brand-emoji { font-size:1.4rem; }
+    .social-bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .social-bar a { display:inline-flex; align-items:center; gap:6px; text-decoration:none; color:#2563eb; font-weight:600; }
+    .social-icon { width:16px; height:16px; display:inline-block; background:#2563eb; border-radius:3px; }
+    .contact-line { margin-top:8px; color:#475569; font-size:.95rem; }
   </style>
 </head>
 
-<body>
+<!-- [PAGE FLAG] add a page identifier for future conditional logic/styles -->
+<body data-page="store">
   <header class="site-header">
     <div class="container header-inner">
-      <h1 class="brand">🛒 Mis Productos</h1>
+      <!-- ─────────────────────────────────────────────────────
+           [BRAND NEW] Hooks de marca para aplicar store-config
+           - #brand-logo se muestra si la config trae un logo
+           - #brand-emoji y .brand reutilizados por script.js
+           ───────────────────────────────────────────────────── -->
+      <h1 class="brand">
+        <img id="brand-logo" alt="Logo de la tienda" loading="lazy" onerror="this.style.display='none'"/><!-- [IMG FAILSAFE] hide if missing -->
+        <span id="brand-emoji">🛒</span>
+        <span id="brand-name">Mis Productos</span>
+      </h1>
 
       <!-- [AUTH NEW] Barra de usuario -->
       <div class="auth-actions">
@@ -64,6 +122,14 @@
       <a href="#carrito" class="cart-jump" aria-label="Ir al carrito">
         Ver carrito
       </a>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────────
+         [STORE CONFIG] Social strip generado por script.js
+         (reemplaza la barra con links fijos)
+         ───────────────────────────────────────────────────── -->
+    <div class="container" style="margin-top:6px;">
+      <nav id="social-strip" class="social-bar" aria-label="Redes sociales"><!-- construido desde script.js --></nav>
     </div>
   </header>
 
@@ -148,7 +214,7 @@
             </div>
           </div>
 
-          <!-- 🔹 Stripe Payment Element -->
+        <!-- 🔹 Stripe Payment Element -->
           <div id="payment-element-container" style="margin-top:20px; display:none;"></div>
 
           <!-- 🔐 Token reCAPTCHA (llenado por script.js) -->
@@ -169,6 +235,15 @@
         >
           Enviar Pedido por WhatsApp
         </button>
+
+        <!-- ────────────────────────────────────────────────
+             [STORE CONFIG] Dirección de la tienda (solo address)
+             (script.js rellena #contact-address; mantenemos #store-address)
+             ──────────────────────────────────────────────── -->
+        <p class="contact-line">
+          <span id="contact-address"></span> <!-- [ADDRESS FIX] added for script.js compatibility -->
+          <span id="store-address" style="display:none;"></span> <!-- existing id kept intact -->
+        </p>
       </div>
     </aside>
   </main>
@@ -227,7 +302,29 @@
 
   <footer class="site-footer">
     <div class="container">
-      <p>© <span id="year"></span> Mi Empresa. Todos los derechos reservados.</p>
+      <p>© <span id="year"></span> <span id="footer-brand">Mi Empresa</span>. Todos los derechos reservados.</p>
+
+      <!-- ────────────────────────────────────────────────
+           [STORE CONFIG] Solo dirección en el pie
+           ──────────────────────────────────────────────── -->
+      <p class="contact-line">
+        <span id="footer-address">—</span>
+      </p>
+
+      <!-- Puedes conservar una barra social en el pie si quieres.
+           Si luego quieres que también se llene desde la config,
+           dime y ajusto script.js para popular #footer-* -->
+      <nav class="social-bar" aria-label="Redes sociales del pie">
+        <a id="footer-instagram" href="#" target="_blank" rel="noopener">
+          <span class="social-icon" aria-hidden="true"></span> Instagram
+        </a>
+        <a id="footer-facebook" href="#" target="_blank" rel="noopener">
+          <span class="social-icon" aria-hidden="true"></span> Facebook
+        </a>
+        <a id="footer-tiktok" href="#" target="_blank" rel="noopener">
+          <span class="social-icon" aria-hidden="true"></span> TikTok
+        </a>
+      </nav>
     </div>
   </footer>
 

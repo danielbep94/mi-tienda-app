@@ -10,6 +10,247 @@ let elements;
 let CARRITO = [];
 let inventarioLocal = [];
 
+// ─────────────────────────────────────────────────────────────
+// [STORE CONFIG NEW] soporte para configuración por tienda
+//   - Carga /config/store-config.json (si existe)
+//   - Ajusta branding, WhatsApp, horarios, redes, etc.
+//   - NUEVO: Render de tira de redes con íconos oficiales
+//   - NUEVO: Mostrar dirección y ocultar links antiguos (tel/whatsapp)
+// ─────────────────────────────────────────────────────────────
+let STORE_CONFIG = null;
+
+async function loadStoreConfig() {
+  // [BRAND PATCH] no-cache para ver cambios al instante
+  try {
+    const r = await fetch('/config/store-config.json', { cache: 'no-cache' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return j || null;
+  } catch {
+    return null;
+  }
+}
+
+// [STORE CONFIG] util: sanitizar URL externa básica
+function safeURL(u) {
+  try {
+    const url = new URL(u);
+    if (!/^https?:$/.test(url.protocol)) return null; // sólo http/https
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+// [STORE CONFIG] íconos SVG oficiales embebidos (sin dependencias)
+const SOCIAL_SVGS = {
+  instagram: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M7 2C4.24 2 2 4.24 2 7v10c0 2.76 2.24 5 5 5h10c2.76 0 5-2.24 5-5V7c0-2.76-2.24-5-5-5H7zm0 2h10c1.67 0 3 1.33 3 3v10c0 1.67-1.33 3-3 3H7c-1.67 0-3-1.33-3-3V7c0-1.67 1.33-3 3-3zm11 1.75a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5zM12 7a5 5 0 100 10 5 5 0 000-10zm0 2a3 3 0 110 6 3 3 0 010-6z"/></svg>`,
+  facebook: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M22 12a10 10 0 10-11.6 9.9v-7h-2.6V12h2.6V9.8c0-2.6 1.6-4 3.9-4 1.1 0 2.3.2 2.3.2v2.6h-1.3c-1.3 0-1.7.8-1.7 1.6V12h2.9l-.5 2.9h-2.4v7A10 10 0 0022 12z"/></svg>`,
+  tiktok: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M21 8.3a6.9 6.9 0 01-4.2-1.4v7.1a6.4 6.4 0 11-5.5-6.3v2.9a3.6 3.6 0 103 3.6V2h2.5a6.9 6.9 0 006.2 6.3z"/></svg>`,
+  x: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M18.9 2H21l-6.6 7.5L22 22h-6.8l-5.3-6.8L3.8 22H2l7-8-6.5-8H9l4.8 6.1L18.9 2zm-3.2 18h3.6L8.5 4H4.7l11 16z"/></svg>`
+};
+
+// [STORE CONFIG] construye la tira de redes si hay contenedor #social-strip
+function renderSocialStrip(cfg) {
+  try {
+    const wrap = document.getElementById('social-strip');
+    if (!wrap) return;
+
+    const socials = cfg?.socials || {};
+    const entries = [
+      ['instagram', socials.instagram],
+      ['facebook',  socials.facebook],
+      ['tiktok',    socials.tiktok],
+      ['x',         socials.x || socials.twitter]
+    ].filter(([, url]) => !!safeURL(url));
+
+    if (!entries.length) {
+      wrap.style.display = 'none';
+      return;
+    }
+
+    wrap.innerHTML = '';
+    wrap.style.display = 'flex';
+    entries.forEach(([key, url]) => {
+      const a = document.createElement('a');
+      a.href = safeURL(url);
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      a.className = 'social-link';     // estilo vendrá desde CSS
+      const title = key.charAt(0).toUpperCase() + key.slice(1);
+      a.title = title;
+      a.setAttribute('aria-label', title); // accesible
+      a.innerHTML = `<span class="social-icon">${SOCIAL_SVGS[key] || ''}</span><span class="social-text">${title}</span>`;
+      wrap.appendChild(a);
+    });
+  } catch (_) {}
+}
+
+/* ────────────────────────────────────────────────────────────
+   [THEME FROM CONFIG NEW]
+   Sobrescribe variables CSS a partir de cfg.ui
+   y actualiza meta theme-color.
+   ──────────────────────────────────────────────────────────── */
+function applyThemeFromConfig(cfg) {
+  try {
+    const ui = cfg?.ui || {};
+    const root = document.documentElement.style;
+    const primary    = ui.primary || ui.accentColor || '#2563eb';
+    const primary600 = ui.primary600 || '#1e4fd6';
+    const success    = ui.success || '#22c55e';
+    const success600 = ui.success600 || '#16a34a';
+
+    root.setProperty('--primary', primary);
+    root.setProperty('--primary-600', primary600);
+    root.setProperty('--success', success);
+    root.setProperty('--success-600', success600);
+
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', primary);
+  } catch {}
+}
+
+function applyStoreConfig(cfg) { if (!cfg) return;
+
+  // 1) Branding (title, nombre, emoji, logo)
+  try {
+    const name = cfg.company?.name || 'Mi Empresa';
+    const emoji = cfg.company?.brandEmoji || '🛒';
+    const logoSrc = cfg.company?.logoUrl || cfg.company?.logo;
+
+    document.title = `Tienda de Productos - ${name}`;
+
+    const brandNameEl = document.getElementById('brand-name');
+    if (brandNameEl) brandNameEl.textContent = name;
+
+    const brandEmojiEl = document.getElementById('brand-emoji');
+    if (brandEmojiEl) brandEmojiEl.textContent = emoji;
+
+    const brandLogoEl = document.getElementById('brand-logo');
+    if (brandLogoEl) {
+      if (logoSrc) {
+        brandLogoEl.src = logoSrc;
+        brandLogoEl.alt = `${name} logo`;
+        brandLogoEl.style.display = 'inline-block'; // [BRAND PATCH]
+      } else {
+        brandLogoEl.style.display = 'none';
+      }
+    }
+
+    const brandTextEl = document.querySelector('.brand');
+    if (brandTextEl && !brandNameEl) {
+      brandTextEl.textContent = `${emoji} ${name}`;
+    }
+  } catch {}
+
+  // [THEME FROM CONFIG NEW] aplicar variables de color
+  applyThemeFromConfig(cfg);
+
+  // 2) Horario de recolección
+  try {
+    const open = cfg.businessHours?.open;
+    const close = cfg.businessHours?.close;
+    const timeInput = document.getElementById('hora-recoleccion');
+    if (timeInput && open && close) {
+      timeInput.min = open;
+      timeInput.max = close;
+      if (!timeInput.value) timeInput.value = open;
+
+      const help = document.getElementById('hora-ayuda');
+      if (help) help.innerHTML = `Formato <strong>HH:MM</strong>. Rango: ${open}–${close}.`;
+      timeInput.setAttribute('title', `Ingresa una hora válida entre ${open} y ${close}`);
+    }
+  } catch {}
+
+  // 3) Contacto (tarjeta de carrito y footer)
+  try {
+    const addr = cfg.company?.address || '—';
+    const phone = cfg.contacts?.phone || '';
+    const waRaw = cfg.contacts?.whatsapp || '';
+
+    // Mostrar dirección
+    const contactAddr = document.getElementById('contact-address');
+    if (contactAddr) contactAddr.textContent = addr;
+    const footerAddr = document.getElementById('footer-address');
+    if (footerAddr) footerAddr.textContent = addr;
+
+    // Teléfono (tel:) — oculto en la tienda
+    const telHref = phone ? `tel:${String(phone).replace(/\s+/g, '')}` : '#';
+    const contactPhone = document.getElementById('contact-phone');
+    if (contactPhone) { contactPhone.href = telHref; contactPhone.style.display = 'none'; }
+    const footerPhone = document.getElementById('footer-phone');
+    if (footerPhone) { footerPhone.href = telHref; footerPhone.style.display = 'none'; }
+
+    // WhatsApp (wa.me) — oculto; se usa solo el botón verde
+    const waDigits = String(waRaw || phone || '').replace(/\D+/g, '');
+    const waHref = waDigits ? `https://wa.me/${waDigits}` : '#';
+    const contactWA = document.getElementById('contact-whatsapp');
+    if (contactWA) { contactWA.href = waHref; contactWA.style.display = 'none'; }
+    const footerWA = document.getElementById('footer-whatsapp');
+    if (footerWA) { footerWA.href = waHref; footerWA.style.display = 'none'; }
+
+    const btn = document.getElementById('btn-whatsapp-pedido');
+    if (btn && waDigits) btn.dataset.phone = waDigits;
+  } catch {}
+
+  // 4) Redes sociales (header y footer)
+  try {
+    const socials = cfg.socials || {};
+    const pairs = [
+      // header
+      ['social-instagram', socials.instagram],
+      ['social-facebook',  socials.facebook],
+      ['social-tiktok',    socials.tiktok],
+      // footer
+      ['footer-instagram', socials.instagram],
+      ['footer-facebook',  socials.facebook],
+      ['footer-tiktok',    socials.tiktok],
+    ];
+    pairs.forEach(([id, url]) => {
+      const a = document.getElementById(id);
+      if (!a) return;
+
+      if (url) {
+        const clean = safeURL(url);
+        a.href = clean || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        // [SOCIAL ICONS PATCH] asegura ícono inline incluso si no hay /img/*.svg
+        let platform = '';
+        if (/instagram/i.test(id)) platform = 'instagram';
+        else if (/facebook/i.test(id)) platform = 'facebook';
+        else if (/tiktok/i.test(id)) platform = 'tiktok';
+
+        if (platform) {
+          let iconEl = a.querySelector('.social-icon');
+          if (!iconEl) {
+            iconEl = document.createElement('span');
+            iconEl.className = 'social-icon';
+            a.insertAdjacentElement('afterbegin', iconEl);
+          }
+          // si el span no tiene SVG dentro, lo inyectamos
+          if (!iconEl.querySelector('svg')) {
+            iconEl.innerHTML = SOCIAL_SVGS[platform] || '';
+          }
+          if (!a.getAttribute('aria-label')) {
+            a.setAttribute('aria-label', platform.charAt(0).toUpperCase() + platform.slice(1));
+          }
+        }
+
+        a.style.pointerEvents = '';
+        a.style.opacity = '';
+      } else {
+        a.href = '#';
+        a.removeAttribute('target');
+        a.removeAttribute('rel');
+        a.style.pointerEvents = 'none';
+        a.style.opacity = '0.35';
+      }
+    });
+  } catch {}
+}
+
 // Referencias DOM
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -30,7 +271,7 @@ const btnIniciarPago = document.getElementById('btn-iniciar-pago');
 const paymentContainer = document.getElementById('payment-element-container');
 
 // ─────────────────────────────────────────────────────────────
-// [AUTH NEW] UI refs & helpers (no se remueven líneas previas)
+// [AUTH NEW] UI refs & helpers
 // ─────────────────────────────────────────────────────────────
 const AUTH_TOKEN_KEY = 'AUTH_TOKEN_V1';
 const authModal = $('#auth-modal');
@@ -80,7 +321,6 @@ function updateAuthUI(user) {
     btnLogout.style.display = '';
     btnOpenLogin.style.display = 'none';
     btnOpenSignup.style.display = 'none';
-    // auto-rellenar nombre/email del formulario de compra si están vacíos
     if (user.name && nombreClienteInput && !nombreClienteInput.value) nombreClienteInput.value = user.name;
     if (user.email && emailClienteInput && !emailClienteInput.value) emailClienteInput.value = user.email;
   } else {
@@ -98,10 +338,7 @@ function openAuthModal(mode = 'login') {
   authModal.style.display = 'block';
   switchTab(mode);
 }
-function closeAuthModal() {
-  if (!authModal) return;
-  authModal.style.display = 'none';
-}
+function closeAuthModal() { if (authModal) authModal.style.display = 'none'; }
 function switchTab(mode) {
   if (!tabLogin || !tabSignup || !formLogin || !formSignup) return;
   if (mode === 'signup') {
@@ -152,8 +389,7 @@ async function getRecaptchaToken(action = 'checkout') {
   return new Promise((resolve) => {
     try {
       if (!window.grecaptcha || !window.RECAPTCHA_SITE_KEY) {
-        resolve(null);
-        return;
+        resolve(null); return;
       }
       window.grecaptcha.ready(() => {
         window.grecaptcha
@@ -161,23 +397,17 @@ async function getRecaptchaToken(action = 'checkout') {
           .then((token) => resolve(token))
           .catch(() => resolve(null));
       });
-    } catch (_) {
-      resolve(null);
-    }
+    } catch (_) { resolve(null); }
   });
 }
 
 // Persistencia ligera
-function guardarCarrito() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CARRITO)); } catch (_) {}
-}
+function guardarCarrito() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(CARRITO)); } catch {} }
 function cargarCarrito() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     CARRITO = raw ? JSON.parse(raw) : [];
-  } catch (_) {
-    CARRITO = [];
-  }
+  } catch { CARRITO = []; }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -241,11 +471,8 @@ function renderizarCarrito() {
 
 function agregarAlCarrito(prod) {
   const existente = CARRITO.find((p) => String(p.id) === String(prod.id));
-  if (existente) {
-    existente.cantidad += 1;
-  } else {
-    CARRITO.push({ ...prod, cantidad: 1 });
-  }
+  if (existente) existente.cantidad += 1;
+  else CARRITO.push({ ...prod, cantidad: 1 });
   guardarCarrito();
   renderizarCarrito();
 }
@@ -258,7 +485,7 @@ async function fetchProductosConFallback() {
     const r1 = await fetch('/api/products', { credentials: 'same-origin' });
     if (r1.ok) return r1.json();
     throw new Error(`HTTP ${r1.status}`);
-  } catch (_) {
+  } catch {
     const r2 = await fetch('http://localhost:3000/api/products');
     if (!r2.ok) throw new Error(`HTTP ${r2.status}`);
     return r2.json();
@@ -319,11 +546,7 @@ async function renderizarProductos() {
         const id = Number.isFinite(Number(raw)) && String(Number(raw)) === String(raw) ? Number(raw) : String(raw);
         const prod = inventarioLocal.find((x) => String(x.id) === String(id));
         if (prod) {
-          agregarAlCarrito({
-            id,
-            nombre: prod.nombre,
-            precio: Number(prod.precio)
-          });
+          agregarAlCarrito({ id, nombre: prod.nombre, precio: Number(prod.precio) });
         }
       });
     });
@@ -469,7 +692,7 @@ function enviarPedidoWhatsapp() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// [AUTH NEW] Listeners de autenticación (abrir/cerrar, login/signup, logout)
+// [AUTH NEW] Listeners de autenticación
 // ─────────────────────────────────────────────────────────────
 if (btnOpenLogin) btnOpenLogin.addEventListener('click', () => openAuthModal('login'));
 if (btnOpenSignup) btnOpenSignup.addEventListener('click', () => openAuthModal('signup'));
@@ -508,7 +731,7 @@ if (formLogin) {
   });
 }
 
-// Signup (envía correo de bienvenida desde el servidor)
+// Signup
 if (formSignup) {
   formSignup.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -529,7 +752,7 @@ if (formSignup) {
       const j = await r.json();
       if (!r.ok) throw new Error(j.message || 'No se pudo registrar.');
       setAuthToken(j.token);
-      updateAuthUI(j.user);               // << mostrará "Hola, {nombre}"
+      updateAuthUI(j.user);
       closeAuthModal();
       showToast('Cuenta creada. ¡Bienvenido!');
     } catch (err) {
@@ -540,23 +763,19 @@ if (formSignup) {
 
 // ─────────────────────────────────────────────────────────────
 // [AUTH RESET FRONT] Soporte para reset-password.html
-// (maneja el formulario de restablecimiento si esta página lo incluye)
 // ─────────────────────────────────────────────────────────────
 (function initResetPasswordPage() {
-  // Detecta si estamos en reset-password.html por path o por existencia de formulario.
   const isResetPath = /\/reset-password\.html$/i.test(window.location.pathname);
   const resetForm = document.getElementById('reset-password-form') || document.getElementById('rp-form');
   if (!isResetPath && !resetForm) return;
 
-  // Campos típicos (usa lo que exista)
   const emailInput = document.getElementById('rp-email') || document.getElementById('reset-email');
   const pass1Input = document.getElementById('rp-password') || document.getElementById('reset-password');
   const pass2Input = document.getElementById('rp-password-2') || document.getElementById('reset-password-2');
 
-  // Lee token/email de la URL
   const params = new URLSearchParams(window.location.search);
   const tokenFromUrl = params.get('token') || '';
-  const emailFromUrl = params.get('email') || '';
+  const emailFromUrl = params.get('email') || '';   // [FIX RESET TYPO] ← corregido
 
   if (emailInput && emailFromUrl) emailInput.value = emailFromUrl;
 
@@ -580,7 +799,7 @@ if (formSignup) {
         });
         const j = await r.json();
         if (!r.ok) throw new Error(j.message || 'No se pudo actualizar la contraseña.');
-        showToast('Contraseña actualizada. Ya puedes iniciar sesión.');
+        showToast('Contraseña actualizado. Ya puedes iniciar sesión.');
         setTimeout(() => { window.location.href = '/'; }, 1200);
       } catch (err) {
         showToast(err.message || 'Error al restablecer contraseña.');
@@ -591,6 +810,13 @@ if (formSignup) {
 
 // ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // [STORE CONFIG NEW] Cargar config de tienda antes de cualquier otra cosa UI
+  STORE_CONFIG = await loadStoreConfig();
+  applyStoreConfig(STORE_CONFIG);
+
+  // [SOCIAL STRIP NEW] construir la franja de redes (si existe contenedor)
+  renderSocialStrip(STORE_CONFIG);
+
   cargarCarrito();
 
   // [AUTH NEW] cargar sesión si hay token
@@ -608,9 +834,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       updateAuthUI(null);
     }
-  } catch (_) {
-    updateAuthUI(null);
-  }
+  } catch { updateAuthUI(null); }
 
   await renderizarProductos();
   renderizarCarrito();

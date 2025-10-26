@@ -26,6 +26,88 @@ let allOrders = []; // [ADMIN FILTER NEW] cache global para filtrar/exportar
 const $$ = (sel) => document.querySelectorAll(sel);
 
 // -------------------------------------------------------------
+// [STORE CONFIG NEW] – Cargar y aplicar /config/store-config.json
+// -------------------------------------------------------------
+async function loadStoreConfig() {
+  try {
+    const resp = await fetch(`/config/store-config.json?_=${Date.now()}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const cfg = await resp.json();
+    applyStoreConfig(cfg);
+  } catch (e) {
+    console.warn('[STORE CONFIG] No se pudo cargar store-config.json:', e?.message);
+  }
+}
+
+// [STORE CONFIG NEW] – Aplica la marca si existen los nodos
+function applyStoreConfig(cfg) {
+  if (!cfg || typeof cfg !== 'object') return;
+
+  // ──────────────────────────────────────────────────────────
+  // [BRAND PATCH] normaliza el nuevo esquema:
+  //   company{ name, brandEmoji, logo, address }
+  //   contacts{ phone, whatsapp }
+  //   socials{ instagram, facebook, tiktok }
+  //   ui{ accentColor, cartColor }
+  // ──────────────────────────────────────────────────────────
+  const company  = cfg.company  || {};
+  const contacts = cfg.contacts || {};
+  const socials  = cfg.socials  || {};
+  const ui       = cfg.ui       || {};
+
+  const name    = company.name || 'Mi Tienda';
+  const emoji   = company.brandEmoji || '🛒';
+  const logoSrc = company.logo || null;
+
+  // [BRAND PATCH] Título de la pestaña
+  try { document.title = `${name} — Panel de Vendedor`; } catch {}
+
+  // [BRAND PATCH] Encabezado: usa elementos dedicados (no sobreescribir h1 completo)
+  const nameEl  = document.getElementById('brand-name');
+  const emojiEl = document.getElementById('brand-emoji');
+  const logoEl  = document.getElementById('brand-logo');
+
+  if (nameEl)  nameEl.textContent  = `${name} — Panel de Gestión de Órdenes`;
+  if (emojiEl) emojiEl.textContent = emoji;
+  if (logoEl && logoSrc) {
+    logoEl.src = logoSrc;
+    logoEl.alt = name;
+    logoEl.style.display = 'inline-block'; // por si estaba oculto
+  }
+
+  // [BRAND PATCH] Links sociales en la barra del panel (IDs del HTML actual)
+  const ig = document.getElementById('ig-link');
+  const fb = document.getElementById('fb-link');
+  const tt = document.getElementById('tt-link');
+  const wa = document.getElementById('wa-link');
+  const socialBar = document.getElementById('social-bar');
+
+  let hasAny = false;
+  if (ig && socials.instagram) { ig.href = socials.instagram; ig.style.display = 'inline-flex'; hasAny = true; }
+  if (fb && socials.facebook)  { fb.href = socials.facebook;  fb.style.display = 'inline-flex'; hasAny = true; }
+  if (tt && socials.tiktok)    { tt.href = socials.tiktok;    tt.style.display = 'inline-flex'; hasAny = true; }
+  if (wa && contacts.whatsapp) { wa.href = `https://wa.me/${String(contacts.whatsapp).replace(/\D+/g,'')}`; wa.style.display = 'inline-flex'; hasAny = true; }
+  if (socialBar && hasAny) socialBar.style.display = 'flex';
+
+  // [BRAND PATCH] Línea de contacto en el footer
+  const contactPieces = [
+    company.address ? `📍 ${company.address}` : '',
+    contacts.phone  ? `☎️ ${contacts.phone}` : '',
+    contacts.whatsapp ? `💬 WhatsApp: ${contacts.whatsapp}` : ''
+  ].filter(Boolean);
+
+  const contactLineEl = document.getElementById('contact-line');
+  if (contactLineEl) contactLineEl.textContent = contactPieces.join(' · ');
+
+  // [BRAND PATCH] Colores UI vía variables CSS
+  if (ui && typeof ui === 'object') {
+    const r = document.documentElement;
+    if (ui.accentColor) r.style.setProperty('--primary', ui.accentColor);
+    if (ui.cartColor)   r.style.setProperty('--cart-accent', ui.cartColor);
+  }
+}
+
+// -------------------------------------------------------------
 // Utilidades de UI/formatos
 // -------------------------------------------------------------
 function formatMoney(n) {
@@ -105,21 +187,21 @@ function ocultarMensaje(targetDiv = statusMensajeDiv) {
 async function listarOrdenes() {
   try {
     ordenesTbody.innerHTML = `
-      <tr><td colspan="5" style="padding:14px; color:#667085;">Cargando órdenes…</td></tr>
+      <tr><td colspan="6" style="padding:14px; color:#667085;">Cargando órdenes…</td></tr>
     `;
     const response = await fetch('/api/ordenes/todas');
     const result = await response.json();
 
     if (result.success) {
       ordenesTbody.innerHTML = '';
-      allOrders = result.ordenes || []; // [ADMIN FILTER NEW]
+      allOrders = result.ordenes || [];
       renderOrdenes(allOrders);
     } else {
-      ordenesTbody.innerHTML = '<tr><td colspan="5">Error al cargar las órdenes.</td></tr>';
+      ordenesTbody.innerHTML = '<tr><td colspan="6">Error al cargar las órdenes.</td></tr>';
     }
   } catch (error) {
     console.error('Error listarOrdenes:', error);
-    ordenesTbody.innerHTML = '<tr><td colspan="5">Error de conexión con el servidor.</td></tr>';
+    ordenesTbody.innerHTML = '<tr><td colspan="6">Error de conexión con el servidor.</td></tr>';
   }
 }
 
@@ -127,7 +209,7 @@ async function listarOrdenes() {
 function renderOrdenes(list) {
   ordenesTbody.innerHTML = '';
   if (!list.length) {
-    ordenesTbody.innerHTML = `<tr><td colspan="5" style="padding:14px;">Sin resultados.</td></tr>`;
+    ordenesTbody.innerHTML = `<tr><td colspan="6" style="padding:14px;">Sin resultados.</td></tr>`;
     return;
   }
   list.forEach((orden) => {
@@ -309,7 +391,7 @@ function exportarCSV() {
     a.href = url;
     a.download = `ordenes_${new Date().toISOString().slice(0,10)}.csv`;
     a.style.display = 'none';
-    document.body.appendChild(a);      // Safari/iOS necesita que el link esté en el DOM
+    document.body.appendChild(a);
     a.click();
     setTimeout(() => {
       URL.revokeObjectURL(url);
@@ -347,7 +429,6 @@ function crearControlesFiltros() {
   `;
   tableWrap.parentNode.insertBefore(div, tableWrap);
 
-  // Eventos
   div.querySelectorAll('input, select').forEach(el => el.addEventListener('input', aplicarFiltros));
   div.querySelector('#btn-exportar-csv').addEventListener('click', exportarCSV);
 }
@@ -356,8 +437,11 @@ function crearControlesFiltros() {
 // Inicialización
 // -------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
+  // [STORE CONFIG NEW]
+  loadStoreConfig();
+
   listarOrdenes();
-  crearControlesFiltros(); // [ADMIN FILTER NEW]
+  crearControlesFiltros();
 
   inputOrderId.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -366,5 +450,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
 btnActualizarStatus.addEventListener('click', actualizarStatusOrden);
 btnBuscarOrden.addEventListener('click', buscarOrden);
