@@ -57,35 +57,57 @@ function renderSocialStrip(cfg) {
     if (!wrap) return;
 
     const socials = cfg?.socials || {};
+
+    // [SOCIAL LABEL FIX] brand-correct names
+    const LABELS = { instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', x: 'X', twitter: 'X' };
+
+    // [URL SANITIZE] only keep safe http/https links
     const entries = [
       ['instagram', socials.instagram],
       ['facebook',  socials.facebook],
       ['tiktok',    socials.tiktok],
-      ['x',         socials.x || socials.twitter]
-    ].filter(([, url]) => !!safeURL(url));
+      ['x',         socials.x || socials.twitter],
+    ]
+      .map(([k, u]) => [k, safeURL(u)])     // normalize/validate
+      .filter(([, u]) => !!u);              // drop invalid/empty
 
     if (!entries.length) {
       wrap.style.display = 'none';
       return;
     }
 
+    // build chips
     wrap.innerHTML = '';
     wrap.style.display = 'flex';
-    entries.forEach(([key, url]) => {
+
+    entries.forEach(([key, href]) => {
       const a = document.createElement('a');
-      a.href = safeURL(url);
+      a.href = href;
       a.target = '_blank';
       a.rel = 'noopener noreferrer';
-      a.className = 'social-link';     // estilo vendrá desde CSS
-      const title = key.charAt(0).toUpperCase() + key.slice(1);
-      a.title = title;
-      a.setAttribute('aria-label', title); // accesible
-      a.innerHTML = `<span class="social-icon">${SOCIAL_SVGS[key] || ''}</span><span class="social-text">${title}</span>`;
+      a.className = 'social-link';                 // styles come from CSS
+      a.dataset.platform = key;                    // (useful for future tweaks)
+
+      // final label (fallback = capitalize)
+      const label = LABELS[key] || (key.charAt(0).toUpperCase() + key.slice(1));
+
+      // [A11Y] label+title
+      a.setAttribute('aria-label', label);
+      a.title = label;
+
+      // icon + text (SVG falls back to empty string if not found)
+      const svg = (SOCIAL_SVGS && SOCIAL_SVGS[key]) ? SOCIAL_SVGS[key] : '';
+      a.innerHTML = `
+        <span class="social-icon" aria-hidden="true">${svg}</span>
+        <span class="social-text">${label}</span>
+      `;
+
       wrap.appendChild(a);
     });
-  } catch (_) {}
+  } catch (_) {
+    // swallow to avoid breaking the rest of the page
+  }
 }
-
 /* ────────────────────────────────────────────────────────────
    [THEME FROM CONFIG NEW]
    Sobrescribe variables CSS a partir de cfg.ui
