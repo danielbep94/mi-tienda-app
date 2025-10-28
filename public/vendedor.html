@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Panel de Vendedor - Estatus de Órdenes</title>
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- [ADMIN GUARD NEW] Evitar indexado del panel -->
+  <meta name="robots" content="noindex, nofollow" />
 </head>
 <body class="admin-body">
 
@@ -20,10 +23,7 @@
       </h1>
 
       <nav class="admin-nav" style="display:flex; gap:10px; align-items:center;">
-        <!-- [BRAND CONFIG PATCH] social bar:
-             - Cambié IDs a los mismos del storefront (#social-instagram/#social-facebook/#social-tiktok)
-               para que tomen los SVGs definidos en styles.css
-             - Se ocultan por defecto; se muestran si hay URL en la config -->
+        <!-- [BRAND CONFIG PATCH] social bar -->
         <div class="social-bar" id="social-bar" style="display:none;">
           <a id="social-instagram" class="social-pill" href="#" target="_blank" rel="noopener" style="display:none">
             <span class="social-icon" aria-hidden="true"></span> Instagram
@@ -37,11 +37,36 @@
         </div>
 
         <a class="admin-link" href="/">← Ir a la tienda</a>
+
+        <!-- [UI UPDATE | HEADER CTA] login chip visible solo sin sesión -->
+        <button id="btn-open-auth" class="login-link header-cta" type="button" style="display:none;">Iniciar sesión</button>
+
+        <!-- [ADMIN NAV NEW | LOGOUT BUTTON] botón para cerrar sesión (solo con sesión) -->
+        <button id="btn-logout" class="logout-link" type="button" style="display:none;">Cerrar sesión</button>
       </nav>
     </div>
   </header>
 
-  <main class="container admin-container">
+  <!-- ─────────────────────────────────────────────────────────
+       [ADMIN GUARD NEW] Pantalla bloqueadora mientras se valida el rol
+       ───────────────────────────────────────────────────────── -->
+  <div id="admin-gate"
+       style="position:fixed; inset:0; background:rgba(255,255,255,0.98); backdrop-filter:saturate(1.2) blur(2px);
+              display:flex; align-items:center; justify-content:center; z-index:99;">
+    <div style="max-width:520px; padding:22px; background:#fff; border:1px solid #e5e7eb; border-radius:14px; box-shadow: var(--shadow); text-align:center;">
+      <h2 style="margin:0 0 10px 0;">Verificando acceso…</h2>
+      <!-- [ADMIN PANEL LOGIN NEW] texto actualizado con botón para abrir el modal -->
+      <p id="admin-gate-msg" style="margin:0; color:#667085;">
+        Por favor espera un momento.
+      </p>
+      <div style="margin-top:14px; font-size:13px; color:#98a2b3;">(Solo personal autorizado)</div>
+      <div style="margin-top:14px;">
+        <button id="gate-open-auth" class="btn btn-primary" type="button" style="display:none;">Iniciar sesión aquí</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="container admin-container" aria-hidden="true" id="admin-main">
     <div class="admin-grid">
 
       <!-- Card 1: Buscar y actualizar estatus -->
@@ -134,18 +159,265 @@
     </div>
   </footer>
 
+  <noscript>
+    <p class="nojs">
+      Este panel requiere JavaScript. Actívalo para continuar.
+    </p>
+  </noscript>
+
+  <!-- ─────────────────────────────────────────────────────────
+       [ADMIN PANEL LOGIN NEW] Modal de Login / Signup embebido
+       ───────────────────────────────────────────────────────── -->
+  <div id="auth-modal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:120;">
+    <div style="position:absolute; inset:0; background:rgba(0,0,0,0.35);" data-close-auth></div>
+    <div style="position:relative; width:min(520px, 92vw); background:#fff; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,0.15); padding:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h3 style="margin:0;">Cuenta</h3>
+        <button type="button" data-close-auth class="btn btn-warn" style="padding:6px 10px;">Cerrar</button>
+      </div>
+
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <button id="tab-login"  class="btn btn-primary" type="button">Iniciar sesión</button>
+        <button id="tab-signup" class="btn" type="button">Crear cuenta</button>
+      </div>
+
+      <form id="form-login"  style="display:block; gap:10px;">
+        <label class="label">Correo</label>
+        <input id="login-email" type="email" class="input" placeholder="tucorreo@ejemplo.com" required />
+        <label class="label">Contraseña</label>
+        <input id="login-pass" type="password" class="input" placeholder="Tu contraseña" required />
+        <button class="btn btn-primary" type="submit" style="margin-top:8px;">Entrar</button>
+        <div style="margin-top:8px;">
+          <a href="/reset-password.html" target="_blank" rel="noopener">¿Olvidaste tu contraseña?</a>
+        </div>
+        <p id="login-msg" class="alert" style="display:none;"></p>
+      </form>
+
+      <form id="form-signup" style="display:none; gap:10px;">
+        <label class="label">Nombre</label>
+        <input id="signup-name" type="text" class="input" placeholder="Tu nombre (opcional)" />
+        <label class="label">Correo</label>
+        <input id="signup-email" type="email" class="input" placeholder="tucorreo@ejemplo.com" required />
+        <label class="label">Contraseña</label>
+        <input id="signup-pass" type="password" class="input" placeholder="Mínimo 6 caracteres" minlength="6" required />
+        <button class="btn btn-success" type="submit" style="margin-top:8px;">Crear cuenta</button>
+        <p id="signup-msg" class="alert" style="display:none;"></p>
+      </form>
+    </div>
+  </div>
+
   <script>
     document.getElementById('year').textContent = new Date().getFullYear();
 
     // ─────────────────────────────────────────────────────────
+    // [DUPLICATE CONST FIX] Evitar colisión con vendedor.js
+    // ─────────────────────────────────────────────────────────
+    window.AUTH_TOKEN_KEY = window.AUTH_TOKEN_KEY || 'AUTH_TOKEN_V1';
+    function getAuthToken(){
+      try { return localStorage.getItem(window.AUTH_TOKEN_KEY) || null; } catch { return null; }
+    }
+    function setAuthToken(token){
+      try { localStorage.setItem(window.AUTH_TOKEN_KEY, token); } catch {}
+    }
+    function clearAuthToken(){
+      try { localStorage.removeItem(window.AUTH_TOKEN_KEY); } catch {}
+      window.__ADMIN_TOKEN__ = null;
+    }
+
+    // Llamada /api/auth/me con Bearer
+    async function getME(){
+      const token = getAuthToken();
+      if(!token) return { ok:false };
+      const r = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+      if(!r.ok) return { ok:false };
+      const j = await r.json();
+      return { ok: !!j?.success, user: j?.user, token };
+    }
+
+    // UI Modal helpers  [ADMIN PANEL LOGIN NEW]
+    const authModal   = document.getElementById('auth-modal');
+    const openAuthBtn = document.getElementById('btn-open-auth');
+    const logoutBtn   = document.getElementById('btn-logout');       /* [NEW] */
+    const gateOpenBtn = document.getElementById('gate-open-auth');
+    const adminGateMsg= document.getElementById('admin-gate-msg');
+
+    function openAuth(){ authModal.style.display = 'flex'; }
+    function closeAuth(){ authModal.style.display = 'none'; }
+
+    document.addEventListener('click', (e)=>{
+      if (e.target?.dataset?.closeAuth !== undefined) closeAuth();
+    });
+    openAuthBtn?.addEventListener('click', openAuth);
+    gateOpenBtn?.addEventListener('click', openAuth);
+
+    /* [NEW] logout: limpia token y vuelve a bloquear el panel */
+    logoutBtn?.addEventListener('click', async ()=>{
+      clearAuthToken();
+      // Mostrar otra vez el gate
+      document.getElementById('admin-gate').style.display = 'flex';
+      document.getElementById('admin-main')?.setAttribute('aria-hidden','true');
+      // Alterna botones de header
+      openAuthBtn.style.display = 'inline-flex';
+      logoutBtn.style.display   = 'none';
+    });
+
+    // Tabs login/signup  [ADMIN PANEL LOGIN NEW]
+    const tabLogin  = document.getElementById('tab-login');
+    const tabSignup = document.getElementById('tab-signup');
+    const formLogin = document.getElementById('form-login');
+    const formSignup= document.getElementById('form-signup');
+
+    function showLogin(){
+      formLogin.style.display = 'block';
+      formSignup.style.display= 'none';
+      tabLogin.classList.add('btn-primary');
+      tabSignup.classList.remove('btn-primary');
+    }
+    function showSignup(){
+      formLogin.style.display = 'none';
+      formSignup.style.display= 'block';
+      tabSignup.classList.add('btn-primary');
+      tabLogin.classList.remove('btn-primary');
+    }
+    tabLogin.addEventListener('click', showLogin);
+    tabSignup.addEventListener('click', showSignup);
+
+    // Envío de formularios  [ADMIN PANEL LOGIN NEW]
+    const loginMsg  = document.getElementById('login-msg');
+    const signupMsg = document.getElementById('signup-msg');
+
+    formLogin.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      loginMsg.style.display = 'block';
+      loginMsg.textContent = 'Verificando…';
+      loginMsg.className = 'alert';
+
+      try{
+        const email = document.getElementById('login-email').value.trim();
+        const pass  = document.getElementById('login-pass').value;
+
+        const r = await fetch('/api/auth/login', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ email, password: pass })
+        });
+        const j = await r.json();
+        if(!r.ok || !j?.success || !j?.token){
+          loginMsg.className='alert';
+          loginMsg.style.backgroundColor='#fde7ea';
+          loginMsg.style.borderColor='#dc3545';
+          loginMsg.style.color='#7a0619';
+          loginMsg.textContent = j?.message || 'No se pudo iniciar sesión.';
+          return;
+        }
+        // éxito
+        setAuthToken(j.token);
+        window.__ADMIN_TOKEN__ = j.token;
+        loginMsg.style.display='none';
+        closeAuth();
+        await gate(true);
+      }catch(err){
+        loginMsg.className='alert';
+        loginMsg.style.backgroundColor='#fde7ea';
+        loginMsg.style.borderColor='#dc3545';
+        loginMsg.style.color='#7a0619';
+        loginMsg.textContent = 'Error de red.';
+      }
+    });
+
+    formSignup.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      signupMsg.style.display = 'block';
+      signupMsg.textContent = 'Creando cuenta…';
+      signupMsg.className = 'alert';
+
+      try{
+        const name  = document.getElementById('signup-name').value.trim();
+        const email = document.getElementById('signup-email').value.trim();
+        const pass  = document.getElementById('signup-pass').value;
+
+        const r = await fetch('/api/auth/signup', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ name, email, password: pass })
+        });
+        const j = await r.json();
+        if(!r.ok || !j?.success || !j?.token){
+          signupMsg.className='alert';
+          signupMsg.style.backgroundColor='#fde7ea';
+          signupMsg.style.borderColor='#dc3545';
+          signupMsg.style.color='#7a0619';
+          signupMsg.textContent = j?.message || 'No se pudo crear la cuenta.';
+          return;
+        }
+        // éxito
+        setAuthToken(j.token);
+        window.__ADMIN_TOKEN__ = j.token;
+        signupMsg.style.display='none';
+        closeAuth();
+        await gate(true);
+      }catch(err){
+        signupMsg.className='alert';
+        signupMsg.style.backgroundColor='#fde7ea';
+        signupMsg.style.borderColor='#dc3545';
+        signupMsg.style.color='#7a0619';
+        signupMsg.textContent = 'Error de red.';
+      }
+    });
+
+    // ─────────────────────────────────────────────────────────
+    // [ADMIN GUARD NEW] Gate con mensajes y botón de login inline
+    //  + alterna botones del header: login / logout
+    // ─────────────────────────────────────────────────────────
+    async function gate(fromAuth=false){
+      const gateEl  = document.getElementById('admin-gate');
+      const gateMsg = document.getElementById('admin-gate-msg');
+      const mainEl  = document.getElementById('admin-main');
+      const openBtn = document.getElementById('gate-open-auth');
+
+      try{
+        const res = await getME();
+
+        // Alternar visibilidad en header según estado
+        if(!res.ok || !res.user){
+          openAuthBtn.style.display = 'inline-flex';
+          logoutBtn.style.display   = 'none';
+          if(gateMsg){ gateMsg.innerHTML = 'Necesitas iniciar sesión para acceder.'; }
+          openBtn.style.display = 'inline-block';
+          mainEl?.setAttribute('aria-hidden', 'true');
+          return;
+        }
+        if(res.user.role !== 'admin'){
+          openAuthBtn.style.display = 'inline-flex';
+          logoutBtn.style.display   = 'none';
+          if(gateMsg) gateMsg.textContent = 'Acceso restringido. Tu cuenta no tiene permisos de administrador.';
+          openBtn.style.display = 'inline-block';
+          mainEl?.setAttribute('aria-hidden', 'true');
+          return;
+        }
+
+        // ✅ Admin: desbloquear panel y mostrar "Cerrar sesión"
+        gateEl.style.display = 'none';
+        mainEl?.removeAttribute('aria-hidden');
+        window.__ADMIN_TOKEN__ = res.token;
+        openAuthBtn.style.display = 'none';
+        logoutBtn.style.display   = 'inline-flex';
+      }catch(e){
+        openAuthBtn.style.display = 'inline-flex';
+        logoutBtn.style.display   = 'none';
+        if(gateMsg) gateMsg.textContent = 'No se pudo verificar tu sesión. Intenta recargar.';
+        openBtn.style.display = 'inline-block';
+        mainEl?.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    // Ejecutar guard al cargar
+    gate();
+  </script>
+
+  <script>
+    // ─────────────────────────────────────────────────────────
     // [BRAND CONFIG PATCH] Carga de /config/store-config.json
-    //   Ajustado para la estructura anidada actual:
-    //   {
-    //     "company": { "name","brandEmoji","logo","address" },
-    //     "contacts": { "phone","whatsapp" },
-    //     "socials":  { "instagram","facebook","tiktok" },
-    //     "ui":       { "accentColor","cartColor" }
-    //   }
     // ─────────────────────────────────────────────────────────
     (async function loadBrandConfig(){
       try{
@@ -153,13 +425,11 @@
         if(!res.ok) throw new Error('No se pudo leer store-config.json');
         const cfg = await res.json();
 
-        // [BRAND PATCH] extrae con fallback seguros
         const company  = cfg.company  || {};
         const contacts = cfg.contacts || {};
-        const socials  = cfg.socials  || {};       // << antes usábamos cfg.social
+        const socials  = cfg.socials  || {};
         const ui       = cfg.ui       || {};
 
-        // 1) Título y encabezado
         const name   = company.name || 'Mi Tienda';
         const emoji  = company.brandEmoji || '🛒';
         const logo   = company.logo || '';
@@ -176,21 +446,19 @@
         if(logoEl && logo){
           logoEl.src = logo;
           logoEl.style.display = 'inline-block';
-          logoEl.style.height = '28px';          // [BRAND PATCH] tamaño razonable
+          logoEl.style.height = '28px';
           logoEl.style.width  = 'auto';
         }
         if(footerCompany) footerCompany.textContent = name;
 
-        // 2) Colores UI (accent y cart)
         const root = document.documentElement;
         if(ui.accentColor){
-          root.style.setProperty('--primary', ui.accentColor);     // [BRAND PATCH]
+          root.style.setProperty('--primary', ui.accentColor);
         }
         if(ui.cartColor){
-          root.style.setProperty('--cart-accent', ui.cartColor);    // [BRAND PATCH]
+          root.style.setProperty('--cart-accent', ui.cartColor);
         }
 
-        // 3) Social (usa mismos IDs del storefront para mostrar SVGs)
         const ig = document.getElementById('social-instagram');
         const fb = document.getElementById('social-facebook');
         const tt = document.getElementById('social-tiktok');
@@ -202,7 +470,6 @@
         if(tt && socials.tiktok){    tt.href = socials.tiktok;    tt.style.display='inline-flex'; hasAny = true; }
         if(bar && hasAny) bar.style.display = 'flex';
 
-        // 4) Línea de contacto en el footer
         const parts = [
           company.address ? `📍 ${company.address}` : '',
           contacts.phone   ? `☎️ ${contacts.phone}`   : '',
@@ -212,12 +479,12 @@
         if(contactEl) contactEl.textContent = parts.join(' · ');
 
       }catch(e){
-        // Silencioso: el panel funciona igual si no hay config
         console.warn('[brand-config] no se pudo cargar configuración de marca:', e?.message);
       }
     })();
   </script>
 
+  <!-- [ADMIN GUARD NOTE] vendedor.js usa window.__ADMIN_TOKEN__ compartido por el guard -->
   <script src="vendedor.js"></script>
 </body>
 </html>

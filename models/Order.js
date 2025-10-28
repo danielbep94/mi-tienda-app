@@ -57,6 +57,15 @@ const OrderSchema = new mongoose.Schema(
     paymentIntentId: { type: String },
     paymentError: { type: String },
     paidAt: { type: String }, // ISO string cuando marques pago completado
+
+    // ─────────────────────────────────────────────────────────
+    // [AUDIT NEW] Quién actualizó el estatus por última vez
+    //   - Usamos Date real para consultas/ordenamiento
+    //   - Mantenemos fechaActualizacion (string) para tu UI existente
+    // ─────────────────────────────────────────────────────────
+    lastUpdatedByEmail: { type: String, default: null, index: true },
+    lastUpdatedByName:  { type: String, default: null },
+    lastUpdatedAt:      { type: Date,   default: null, index: true },
   },
   { collection: 'orders' }
 );

@@ -28,6 +28,15 @@ const stripe = require('stripe')(STRIPE_SECRET_KEY);
 const RECAPTCHA_SECRET_KEY = process.env.RECAPTCHA_SECRET_KEY || '';
 const RECAPTCHA_MIN_SCORE = Number(process.env.RECAPTCHA_MIN_SCORE ?? 0.5);
 
+// [ADMIN LIST NEW] Read allowed admin emails from .env and normalize into a Set
+// Example .env: ADMIN_EMAILS=admin1@acme.com,admin2@acme.com
+const ADMIN_EMAILS = new Set(
+  String(process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
 // Modelos
 const Product = require('./models/Product');
 const Order = require('./models/Order');
@@ -389,11 +398,12 @@ app.post('/api/debug-recaptcha', express.json(), async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// [AUTH NEW] Helpers JWT & middleware
+// [AUTH NEW] Helpers JWT & middleware (UPDATED: role in JWT + guards)
 // ─────────────────────────────────────────────────────────────
 function signUserToken(user) {
+  // [JWT ROLE NEW] embed role in token so front-end can guard UI
   return jwt.sign(
-    { uid: String(user._id), email: user.email, name: user.name || '' },
+    { uid: String(user._id), email: user.email, name: user.name || '', role: user.role || 'customer' },
     USER_JWT_SECRET,
     { expiresIn: '15d' }
   );
@@ -408,6 +418,27 @@ function authOptional(req, _res, next) {
     } catch {
       req.user = null;
     }
+  }
+  next();
+}
+
+// [AUTH REQUIRED NEW] strict auth guard
+function authRequired(req, res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ success: false, message: 'No autenticado.' });
+  try {
+    req.user = jwt.verify(token, USER_JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ success: false, message: 'Token inválido.' });
+  }
+}
+
+// [ADMIN REQUIRED NEW] role guard
+function adminRequired(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Requiere rol administrador.' });
   }
   next();
 }
@@ -548,6 +579,8 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // ─────────────────────────────────────────────────────────────
 // [AUTH NEW] Endpoints de autenticación (signup/login/me)
+//     - now embeds role in JWT and returns it to the client
+//     - assigns admin role if email belongs to ADMIN_EMAILS
 // ─────────────────────────────────────────────────────────────
 app.post('/api/auth/signup', async (req, res) => {
   try {
@@ -563,18 +596,33 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(409).json({ success: false, message: 'Este email ya está registrado.' });
     }
     const passwordHash = await bcrypt.hash(String(password), 10);
+
+    // [SIGNUP ADMIN ASSIGN NEW] auto-admin if email is listed in ADMIN_EMAILS
+    const role = ADMIN_EMAILS.has(String(email).toLowerCase()) ? 'admin' : 'customer';
+
     const user = await User.create({
       email,
       name: name || '',
       passwordHash,
       marketingOptIn: marketingOptIn !== false,
+      role, // ← NEW
     });
 
     // [AUTH WELCOME NEW] enviar correo de bienvenida (no bloqueante)
     enviarCorreoBienvenida({ to: user.email, name: user.name }).catch(() => {});
 
     const token = signUserToken(user);
-    res.json({ success: true, token, user: { email: user.email, name: user.name, transactionsCount: user.transactionsCount, lifetimeSpent: user.lifetimeSpent } });
+    res.json({
+      success: true,
+      token,
+      user: {
+        email: user.email,
+        name: user.name,
+        role: user.role, // ← NEW
+        transactionsCount: user.transactionsCount,
+        lifetimeSpent: user.lifetimeSpent
+      }
+    });
   } catch (e) {
     console.error('[AUTH NEW] signup error:', e.message);
     res.status(500).json({ success: false, message: 'Error al registrar usuario.' });
@@ -591,8 +639,27 @@ app.post('/api/auth/login', async (req, res) => {
     if (!user) return res.status(401).json({ success: false, message: 'Credenciales inválidas.' });
     const ok = await bcrypt.compare(String(password), user.passwordHash || '');
     if (!ok) return res.status(401).json({ success: false, message: 'Credenciales inválidas.' });
+
+    // [ADMIN SYNC NEW] If an admin email logs in but role is stale, sync it
+    const shouldBeAdmin = ADMIN_EMAILS.has(String(email).toLowerCase());
+    if (shouldBeAdmin && user.role !== 'admin') {
+      user.role = 'admin';
+      await user.save();
+    }
+
     const token = signUserToken(user);
-    res.json({ success: true, token, user: { email: user.email, name: user.name, transactionsCount: user.transactionsCount, lifetimeSpent: user.lifetimeSpent, lastOrderId: user.lastOrderId } });
+    res.json({
+      success: true,
+      token,
+      user: {
+        email: user.email,
+        name: user.name,
+        role: user.role, // ← NEW
+        transactionsCount: user.transactionsCount,
+        lifetimeSpent: user.lifetimeSpent,
+        lastOrderId: user.lastOrderId
+      }
+    });
   } catch (e) {
     console.error('[AUTH NEW] login error:', e.message);
     res.status(500).json({ success: false, message: 'Error al iniciar sesión.' });
@@ -602,7 +669,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.get('/api/auth/me', authOptional, async (req, res) => {
   try {
     if (!req.user?.email) return res.status(401).json({ success: false, message: 'No autenticado.' });
-    const user = await User.findOne({ email: req.user.email }).select('email name transactionsCount lifetimeSpent lastOrderId');
+    const user = await User.findOne({ email: req.user.email }).select('email name role transactionsCount lifetimeSpent lastOrderId'); // ← role incluido
     if (!user) return res.status(404).json({ success: false, message: 'Usuario no encontrado.' });
     res.json({ success: true, user });
   } catch (e) {
@@ -827,7 +894,7 @@ app.post('/apartar-compra', async (req, res) => {
   }
 });
 
-// Consultas de órdenes
+// Consultas de órdenes (pública: por ID)
 app.get('/api/orden/:id', async (req, res) => {
   try {
     const ordenEncontrada = await Order.findOne({ orderId: req.params.id });
@@ -842,7 +909,8 @@ app.get('/api/orden/:id', async (req, res) => {
   }
 });
 
-app.get('/api/ordenes/todas', async (req, res) => {
+// [ADMIN PROTECT NEW] Listar todas las órdenes → admin only
+app.get('/api/ordenes/todas', authRequired, adminRequired, async (req, res) => {
   try {
     const ordenes = await Order.find({}).sort({ fechaCreacion: -1 });
     res.json({ success: true, ordenes });
@@ -852,15 +920,22 @@ app.get('/api/ordenes/todas', async (req, res) => {
   }
 });
 
-// Actualizar estatus y enviar correo
-app.post('/api/orden/status', async (req, res) => {
+// [ADMIN PROTECT + AUDIT NEW] Actualizar estatus y enviar correo → admin only
+app.post('/api/orden/status', authRequired, adminRequired, async (req, res) => {
   const { orderId, nuevoStatus } = req.body;
   if (!orderId || !nuevoStatus) return res.status(400).json({ success: false, message: 'Faltan parámetros.' });
 
   try {
     const result = await Order.findOneAndUpdate(
       { orderId },
-      { status: nuevoStatus, fechaActualizacion: new Date().toLocaleString() },
+      {
+        status: nuevoStatus,
+        fechaActualizacion: new Date().toLocaleString(),
+        // [AUDIT NEW] who made the change (NOTE: add these fields to Order schema to persist)
+        lastUpdatedByEmail: req.user?.email || null,
+        lastUpdatedByName:  req.user?.name  || null,
+        lastUpdatedAt:      new Date()
+      },
       { new: true }
     );
     if (!result) return res.status(404).json({ success: false, message: `Orden ${orderId} no encontrada.` });
@@ -873,9 +948,9 @@ app.post('/api/orden/status', async (req, res) => {
   }
 });
 
-// Carga masiva de productos
+// Carga masiva de productos (ADMIN)
 const upload = multer({ dest: 'uploads/' });
-app.post('/api/admin/catalogo', upload.single('archivoCatalogo'), async (req, res) => {
+app.post('/api/admin/catalogo', authRequired, adminRequired, upload.single('archivoCatalogo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'Archivo no recibido.' });
   const archivoRuta = req.file.path;
 
@@ -916,6 +991,11 @@ app.post('/api/admin/catalogo', upload.single('archivoCatalogo'), async (req, re
   }
 });
 
+// [SANITY NEW] quick admin ping for testing your token
+app.get('/api/admin/ping', authRequired, adminRequired, (req, res) => {
+  res.json({ success: true, user: req.user, message: 'admin ok' });
+});
+
 // ─────────────────────────────────────────────────────────────
 /* 9) Errores y Arranque */
 // ─────────────────────────────────────────────────────────────
@@ -929,4 +1009,5 @@ process.on('uncaughtException', (err) => {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor en funcionamiento en http://localhost:${PORT}`);
   console.log('➡️  Asegúrate de exponer /webhook/stripe con ngrok/tu dominio y que STRIPE_WEBHOOK_SECRET esté en .env');
+  console.log('👮 Admin emails:', Array.from(ADMIN_EMAILS).join(', ') || '(ninguno configurado)');
 });
