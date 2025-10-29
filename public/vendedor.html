@@ -8,6 +8,8 @@
 
   <!-- [ADMIN GUARD NEW] Evitar indexado del panel -->
   <meta name="robots" content="noindex, nofollow" />
+  <!-- [THEME META NEW] color del navegador en móvil (se actualiza via JS) -->
+  <meta name="theme-color" content="#2563eb" /> <!-- [HEADER IMAGE NEW] -->
 </head>
 <body class="admin-body">
 
@@ -418,6 +420,7 @@
   <script>
     // ─────────────────────────────────────────────────────────
     // [BRAND CONFIG PATCH] Carga de /config/store-config.json
+    // + Soporte para imagen de cabecera desde config (ui.headerImage)
     // ─────────────────────────────────────────────────────────
     (async function loadBrandConfig(){
       try{
@@ -454,9 +457,34 @@
         const root = document.documentElement;
         if(ui.accentColor){
           root.style.setProperty('--primary', ui.accentColor);
+          // [THEME META SYNC] actualiza color del navegador
+          const metaTheme = document.querySelector('meta[name="theme-color"]'); /* [HEADER IMAGE NEW] */
+          if (metaTheme) metaTheme.setAttribute('content', ui.accentColor);     /* [HEADER IMAGE NEW] */
         }
         if(ui.cartColor){
           root.style.setProperty('--cart-accent', ui.cartColor);
+        }
+
+        /* ────────────────────────────────────────────────────
+           [HEADER IMAGE NEW]
+           Si hay ui.headerImage/ui.headerBackground, activamos
+           la cabecera con foto usando variables CSS compartidas.
+           ──────────────────────────────────────────────────── */
+        const headerImg   = ui.headerImage || ui.headerBackground || null;   /* [HEADER IMAGE NEW] */
+        const headerOv    = (ui.headerOverlay ?? 'rgba(0,0,0,.25)');         /* [HEADER IMAGE NEW] */
+        const headerText  = (ui.headerText ?? '#ffffff');                    /* [HEADER IMAGE NEW] */
+        const headerEl    = document.querySelector('.site-header');          /* [HEADER IMAGE NEW] */
+
+        if (headerImg) {                                                     /* [HEADER IMAGE NEW] */
+          root.style.setProperty('--header-image', `url('${headerImg}')`);
+          root.style.setProperty('--header-overlay', headerOv);
+          root.style.setProperty('--header-text', headerText);
+          headerEl?.classList.add('header-has-image');
+        } else {
+          root.style.removeProperty('--header-image');
+          root.style.removeProperty('--header-overlay');
+          root.style.removeProperty('--header-text');
+          headerEl?.classList.remove('header-has-image');
         }
 
         const ig = document.getElementById('social-instagram');

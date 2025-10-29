@@ -14,6 +14,15 @@
     --border:#e5e7eb;
     --shadow: 0 8px 18px rgba(16,24,40,.06);
     --radius: 14px;
+  
+    /* ----------------------------- */
+    /* [HEADER IMAGE NEW] defaults   */
+    /* These are overridden by JS    */
+    /* from store-config.json        */
+    /* ----------------------------- */
+    --header-image: ;                 /* set to url('/img/headers/fondo.jpg') */
+    --header-overlay: rgba(0,0,0,.0); /* overlay color; 0 means transparent   */
+    --header-text: #ffffff;           /* text/icon color on top of image      */
   }
   
   *{ box-sizing: border-box; }
@@ -42,11 +51,47 @@
     color:#fff;
     box-shadow: 0 4px 14px rgba(0,0,0,.08);
   }
+  
+  /* ---------------------------------------------- */
+  /* [HEADER IMAGE NEW] image/overlay implementation
+     - When JS adds .header-has-image to .site-header,
+       we render the picture + overlay using ::before/::after
+       and keep content above with z-index on .header-inner. */
+  /* ---------------------------------------------- */
+  .site-header.header-has-image{
+    /* remove gradient bg; the image layer will render below */
+    background: none;
+    color: var(--header-text, #fff);
+  }
+  .site-header.header-has-image::before{
+    content:"";
+    position:absolute;
+    inset:0;
+    background-image: var(--header-image);
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    z-index:0;
+    pointer-events: none; /* [CLICK FIX] let header links be clickable */
+  }
+  .site-header.header-has-image::after{
+    content:"";
+    position:absolute;
+    inset:0;
+    background: var(--header-overlay, rgba(0,0,0,.25));
+    z-index:1;
+    pointer-events: none; /* [CLICK FIX] avoid intercepting clicks */
+  }
+  
   .header-inner{
     display:flex;
     align-items:center;
     justify-content:space-between;
     padding:14px 0;
+  
+    /* [HEADER IMAGE NEW] ensure header content sits above overlay */
+    position: relative; /* new */
+    z-index: 2;         /* new */
   }
   .brand{ margin:0; font-size:clamp(1.2rem, 2.5vw, 1.8rem); font-weight:800; letter-spacing:.3px; }
   

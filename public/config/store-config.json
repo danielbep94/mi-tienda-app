@@ -5,12 +5,24 @@
     "logo": "/img/logo.png",
     "address": "Av. Reforma 123, CDMX"
   },
-  "contacts": { "phone": "+52 55 1234 5678", "whatsapp": "5215512345678" },
+  "contacts": {
+    "phone": "+52 55 1234 5678",
+    "whatsapp": "5215512345678"
+  },
   "socials": {
     "instagram": "https://instagram.com/techplazacdmx",
     "facebook": "https://facebook.com/techplazacdmx",
     "tiktok": "https://www.tiktok.com/@techplazacdmx"
   },
-  "businessHours": { "open": "08:00", "close": "22:00" },
-  "ui": { "accentColor": "#2563eb", "cartColor": "#2e7d32" }
+  "businessHours": {
+    "open": "08:00",
+    "close": "22:00"
+  },
+  "ui": {
+    "accentColor": "#2563eb",
+    "cartColor": "#2e7d32",
+    "headerImage": "/img/headers/fondo.jpg",      
+    "headerOverlay": "rgba(0,0,0,0.35)",          
+    "headerTextColor": "#ffffff"                   
+  }
 }

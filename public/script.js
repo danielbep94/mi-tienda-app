@@ -113,24 +113,60 @@ function renderSocialStrip(cfg) {
    Sobrescribe variables CSS a partir de cfg.ui
    y actualiza meta theme-color.
    ──────────────────────────────────────────────────────────── */
-function applyThemeFromConfig(cfg) {
-  try {
-    const ui = cfg?.ui || {};
-    const root = document.documentElement.style;
-    const primary    = ui.primary || ui.accentColor || '#2563eb';
-    const primary600 = ui.primary600 || '#1e4fd6';
-    const success    = ui.success || '#22c55e';
-    const success600 = ui.success600 || '#16a34a';
-
-    root.setProperty('--primary', primary);
-    root.setProperty('--primary-600', primary600);
-    root.setProperty('--success', success);
-    root.setProperty('--success-600', success600);
-
-    const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.setAttribute('content', primary);
-  } catch {}
-}
+/* ────────────────────────────────────────────────────────────
+   [THEME FROM CONFIG NEW]
+   Sobrescribe variables CSS a partir de cfg.ui
+   y actualiza meta theme-color.
+   + Lee imagen de cabecera desde config (opcional)
+   ──────────────────────────────────────────────────────────── */
+   function applyThemeFromConfig(cfg) {
+    try {
+      const ui = cfg?.ui || {};
+      const rootStyle = document.documentElement.style;
+  
+      // Colores base (igual que antes)
+      const primary    = ui.primary || ui.accentColor || '#2563eb';
+      const primary600 = ui.primary600 || '#1e4fd6';
+      const success    = ui.success || '#22c55e';
+      const success600 = ui.success600 || '#16a34a';
+  
+      rootStyle.setProperty('--primary', primary);
+      rootStyle.setProperty('--primary-600', primary600);
+      rootStyle.setProperty('--success', success);
+      rootStyle.setProperty('--success-600', success600);
+  
+      const metaTheme = document.querySelector('meta[name="theme-color"]');
+      if (metaTheme) metaTheme.setAttribute('content', primary);
+  
+      /* ──────────────────────────────────────────────────────
+         [HEADER IMAGE NEW]
+         Si viene una imagen en cfg.ui.headerImage, activamos
+         el fondo con foto y opcionalmente un overlay y color
+         de texto. Si NO viene, volvemos al gradiente default.
+         ────────────────────────────────────────────────────── */
+      const headerImage   = ui.headerImage || ui.headerBackground || null;    // e.g. "/img/headers/fondo.jpg"
+      const headerOverlay = ui.headerOverlay ?? 'rgba(0,0,0,.25)';            // opcional
+      const headerText    = ui.headerText ?? '#ffffff';                       // opcional
+  
+      const siteHeader = document.querySelector('.site-header');
+  
+      if (headerImage) {
+        // Variables que usa el CSS para renderizar ::before/::after
+        rootStyle.setProperty('--header-image', `url('${headerImage}')`);     /* [HEADER IMAGE NEW] */
+        rootStyle.setProperty('--header-overlay', headerOverlay);             /* [HEADER IMAGE NEW] */
+        rootStyle.setProperty('--header-text', headerText);                   /* [HEADER IMAGE NEW] */
+  
+        if (siteHeader) siteHeader.classList.add('header-has-image');         /* [HEADER IMAGE NEW] */
+      } else {
+        // Limpia cualquier estado previo para volver al gradiente
+        rootStyle.removeProperty('--header-image');                           /* [HEADER IMAGE NEW] */
+        rootStyle.removeProperty('--header-overlay');                         /* [HEADER IMAGE NEW] */
+        rootStyle.removeProperty('--header-text');                            /* [HEADER IMAGE NEW] */
+  
+        if (siteHeader) siteHeader.classList.remove('header-has-image');      /* [HEADER IMAGE NEW] */
+      }
+    } catch {}
+  }
 
 function applyStoreConfig(cfg) { if (!cfg) return;
 
